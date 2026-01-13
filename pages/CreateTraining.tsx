@@ -45,6 +45,7 @@ export const CreateTraining: React.FC = () => {
   const [editingFacName, setEditingFacName] = useState<string | null>(null); // Stores the original name being edited
   const [editNameInput, setEditNameInput] = useState('');
   const [editWaInput, setEditWaInput] = useState('');
+  const [showEditSuggestions, setShowEditSuggestions] = useState(false); // New state for edit dropdown
   
   // State for Editing specific Session (Inline)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -105,13 +106,21 @@ export const CreateTraining: React.FC = () => {
     return groups;
   }, [facilitators]);
 
-  // Filtered Contacts for Autocomplete (Facilitator)
+  // Filtered Contacts for Autocomplete (Facilitator Top Input)
   const filteredContacts = useMemo(() => {
     if (!facName) return [];
     return savedContacts.filter(c => 
         c.name.toLowerCase().includes(facName.toLowerCase())
     );
   }, [facName, savedContacts]);
+
+  // Filtered Contacts for Edit Input (Facilitator Group Card)
+  const filteredEditContacts = useMemo(() => {
+    if (!editNameInput) return [];
+    return savedContacts.filter(c => 
+        c.name.toLowerCase().includes(editNameInput.toLowerCase())
+    );
+  }, [editNameInput, savedContacts]);
 
   // Filtered Contacts for Autocomplete (Process Organizer)
   const filteredProcessContacts = useMemo(() => {
@@ -196,6 +205,19 @@ export const CreateTraining: React.FC = () => {
       setShowSuggestions(false);
   };
 
+  // --- EDIT FACILITATOR HANDLERS ---
+  const handleEditFacilitatorInput = (value: string) => {
+      setEditNameInput(value);
+      setShowEditSuggestions(true);
+      // Optional: Clear WA if name is cleared manually, but usually users prefer keeping it
+  };
+
+  const selectEditContact = (contact: Contact) => {
+      setEditNameInput(contact.name);
+      setEditWaInput(contact.whatsapp);
+      setShowEditSuggestions(false);
+  };
+
   // --- PROCESS ORGANIZER HANDLERS ---
   const handleProcessOrganizerInput = (value: string) => {
       setProcessOrganizerName(value);
@@ -278,6 +300,7 @@ export const CreateTraining: React.FC = () => {
       setEditingFacName(name);
       setEditNameInput(name);
       setEditWaInput(currentWa || '');
+      setShowEditSuggestions(false);
   };
 
   const saveEditFacilitator = () => {
@@ -377,14 +400,14 @@ export const CreateTraining: React.FC = () => {
       setEditingSessionId(null);
   };
 
-  const toggleSessionLock = (id: string, currentStatus: boolean | undefined) => {
-      // Cycle: Auto (undefined) -> Manual Lock (false) -> Manual Open (true) -> Auto (undefined)
+  const toggleSessionLock = (id: string, currentIsOpen: boolean | undefined) => {
       setFacilitators(facilitators.map(f => {
           if (f.id === id) {
+              // Cycle: Auto (undefined) -> Locked (false) -> Open (true) -> Auto (undefined)
               let nextStatus: boolean | undefined;
-              if (currentStatus === undefined) nextStatus = false; // Auto -> Lock
-              else if (currentStatus === false) nextStatus = true; // Lock -> Open
-              else nextStatus = undefined; // Open -> Auto
+              if (currentIsOpen === undefined) nextStatus = false; // Set to Locked
+              else if (currentIsOpen === false) nextStatus = true; // Set to Open
+              else nextStatus = undefined; // Set back to Auto (undefined)
               
               return { ...f, isOpen: nextStatus };
           }
@@ -580,9 +603,9 @@ export const CreateTraining: React.FC = () => {
                              const isAdding = addingSessionTo === name;
 
                              return (
-                                <div key={name} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden hover:border-indigo-300 transition-colors group/card">
+                                <div key={name} className="bg-white border border-slate-200 rounded-xl shadow-sm hover:border-indigo-300 transition-colors group/card">
                                     {/* Card Header: Person Info */}
-                                    <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-start md:items-center flex-col md:flex-row gap-3">
+                                    <div className="p-4 bg-slate-50 border-b border-slate-100 rounded-t-xl flex justify-between items-start md:items-center flex-col md:flex-row gap-3">
                                         <div className="flex items-center gap-3 w-full">
                                             {/* ORDER NUMBER INPUT */}
                                             <div className="flex items-center bg-white border border-slate-300 rounded-lg px-2 py-1 gap-1" title="Nomor Urut">
@@ -598,8 +621,34 @@ export const CreateTraining: React.FC = () => {
                                             <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm shrink-0">{name.charAt(0)}</div>
                                             
                                             {isEditing ? (
-                                                <div className="flex gap-2 w-full max-w-md">
-                                                    <input type="text" value={editNameInput} onChange={e => setEditNameInput(e.target.value)} className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm font-bold" placeholder="Nama" />
+                                                <div className="flex gap-2 w-full max-w-md items-start">
+                                                    {/* AUTOCOMPLETE INPUT FOR EDIT */}
+                                                    <div className="relative flex-1">
+                                                        <input 
+                                                            type="text" 
+                                                            value={editNameInput} 
+                                                            onChange={(e) => handleEditFacilitatorInput(e.target.value)} 
+                                                            onBlur={() => setTimeout(() => setShowEditSuggestions(false), 200)}
+                                                            className="w-full border border-slate-300 rounded px-2 py-1 text-sm font-bold focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                                            placeholder="Nama" 
+                                                            autoComplete="off"
+                                                        />
+                                                        {/* EDIT DROPDOWN */}
+                                                        {showEditSuggestions && editNameInput && filteredEditContacts.length > 0 && (
+                                                            <ul className="absolute z-[60] left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                                {filteredEditContacts.map(c => (
+                                                                    <li 
+                                                                        key={c.id} 
+                                                                        onClick={() => selectEditContact(c)}
+                                                                        className="px-3 py-2 text-xs font-normal text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer border-b border-slate-50 last:border-0 transition-colors"
+                                                                    >
+                                                                        {c.name}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        )}
+                                                    </div>
+                                                    
                                                     <input type="text" value={editWaInput} onChange={e => setEditWaInput(e.target.value)} className="w-32 border border-slate-300 rounded px-2 py-1 text-sm font-mono" placeholder="No WA" />
                                                     <button onClick={saveEditFacilitator} className="bg-green-600 text-white p-1 rounded hover:bg-green-700"><Check size={16}/></button>
                                                     <button onClick={() => setEditingFacName(null)} className="bg-slate-300 text-slate-700 p-1 rounded hover:bg-slate-400"><X size={16}/></button>
@@ -638,10 +687,7 @@ export const CreateTraining: React.FC = () => {
 
                                             // Determine effective status
                                             const isManual = session.isOpen !== undefined;
-                                            const autoOpen = isDateMatch && isTimePassed;
-                                            
-                                            // Visual State
-                                            const effectiveOpen = isManual ? session.isOpen : autoOpen;
+                                            const effectiveOpen = isManual ? session.isOpen : (isDateMatch && isTimePassed);
 
                                             // Determine Badge Appearance
                                             let badgeClass = '';
@@ -659,6 +705,7 @@ export const CreateTraining: React.FC = () => {
                                                     badgeIcon = <Lock size={10} />;
                                                 }
                                             } else {
+                                                // Auto States
                                                 if (effectiveOpen) {
                                                     badgeClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
                                                     badgeText = 'OTOMATIS: AKTIF';
