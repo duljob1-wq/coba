@@ -32,26 +32,35 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
     if (type === 'facilitator') {
         if (!training.targets || training.targets.length === 0) return;
         
-        // Find the facilitator in the training to get WhatsApp number
+        // Find the specific session/facilitator row using unique targetId
+        // Note: targetId corresponds to the UUID of the specific session row in CreateTraining
         const facilitator = training.facilitators.find(f => f.id === targetId);
+        
         if (!facilitator || !facilitator.whatsapp) {
-            console.log("AutoReport: Facilitator not found or no WhatsApp number.");
+            console.log("AutoReport: Facilitator/Session not found or no WhatsApp number.");
             return;
         }
 
         const allResponses = await getResponses(trainingId);
+        
+        // CRITICAL UPDATE: Filter responses by Name AND Subject to ensure multi-subject facilitators
+        // have independent counters/triggers for each subject.
         const facResponses = allResponses.filter(r => 
             r.type === 'facilitator' && 
-            (r.targetName === targetName || (r.targetName && r.targetName.includes(targetName)))
+            r.targetName === facilitator.name &&
+            r.targetSubject === facilitator.subject 
         );
 
         const count = facResponses.length;
-        console.log(`AutoReport Fac Check: Count ${count}, Targets: ${training.targets.join(', ')}`);
+        console.log(`AutoReport Check [${facilitator.name} - ${facilitator.subject}]: Count ${count}, Targets: ${training.targets.join(', ')}`);
 
         if (training.targets.includes(count)) {
+            // Unique Report Key combines Session ID (targetId) and Count.
+            // Since targetId is unique per session/materi, this separates reports correctly.
             const reportKey = `${targetId}_${count}`;
+            
             if (!training.reportedTargets) training.reportedTargets = {};
-            if (training.reportedTargets[reportKey]) return;
+            if (training.reportedTargets[reportKey]) return; // Already sent
 
             // Prepare Message
             const settings = await getSettings();
@@ -64,9 +73,9 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             message += `Pelatihan: ${training.title}\n`;
             message += `Materi: ${facilitator.subject}\n`;
             message += `Hari/Tgl: ${formatDateID(facilitator.sessionDate)}\n`;
-            message += `Jumlah Responden: ${count} orang\n\n`;
+            message += `Jumlah Responden: ${count} orang (Target Tercapai)\n\n`;
             
-            message += `*Ringkasan Nilai:*\n`;
+            message += `*Ringkasan Nilai Sementara:*\n`;
             stats.forEach(s => {
                 if (s.value !== 'Isian Teks') {
                     message += `- ${s.label}: *${s.value}*\n`;
@@ -87,7 +96,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const commentLink = `${baseUrl}#/comments/${trainingId}/${targetId}`;
 
             message += `\n\n💬 *Pesan & Masukan Responden:*\n`;
-            message += `Baca seluruh pesan tertulis dari responden melalui tautan berikut:\n${commentLink}`;
+            message += `Baca seluruh pesan tertulis dari responden untuk sesi ini melalui tautan berikut:\n${commentLink}`;
             message += `\n\n${settings.waFooter}`;
 
             // Send
@@ -95,7 +104,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             if (success) {
                 training.reportedTargets[reportKey] = true;
                 await saveTraining(training);
-                console.log(`AutoReport: SUCCESS sent to ${facilitator.name}`);
+                console.log(`AutoReport: SUCCESS sent to ${facilitator.name} for subject ${facilitator.subject}`);
             }
         }
     } 
