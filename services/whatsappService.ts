@@ -1,0 +1,231 @@
+
+import { getTrainingById, getResponses, getSettings, saveTraining } from './storageService';
+
+// Helper untuk format tanggal Indonesia
+const formatDateID = (dateStr: string) => {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+// Helper untuk label nilai
+const getScoreLabel = (val: number, type: 'star' | 'slider') => {
+    if (type === 'star') {
+        if (val >= 4.2) return 'Sangat Baik';
+        if (val >= 3.4) return 'Baik';
+        if (val >= 2.6) return 'Cukup';
+        if (val >= 1.8) return 'Sedang';
+        return 'Kurang';
+    } else {
+        // Slider Scale: 45-100 with breakpoints 55, 75, 85
+        if (val >= 86) return 'Sangat Baik';
+        if (val >= 76) return 'Baik';
+        if (val >= 56) return 'Sedang';
+        return 'Kurang';
+    }
+};
+
+export const checkAndSendAutoReport = async (trainingId: string, targetId: string, targetName: string, type: 'facilitator' | 'process' = 'facilitator') => {
+    const training = await getTrainingById(trainingId);
+    if (!training) return;
+
+    // --- LOGIC FOR FACILITATOR REPORT ---
+    if (type === 'facilitator') {
+        if (!training.targets || training.targets.length === 0) return;
+        
+        // Find the facilitator in the training to get WhatsApp number
+        const facilitator = training.facilitators.find(f => f.id === targetId);
+        if (!facilitator || !facilitator.whatsapp) {
+            console.log("AutoReport: Facilitator not found or no WhatsApp number.");
+            return;
+        }
+
+        const allResponses = await getResponses(trainingId);
+        const facResponses = allResponses.filter(r => 
+            r.type === 'facilitator' && 
+            (r.targetName === targetName || (r.targetName && r.targetName.includes(targetName)))
+        );
+
+        const count = facResponses.length;
+        console.log(`AutoReport Fac Check: Count ${count}, Targets: ${training.targets.join(', ')}`);
+
+        if (training.targets.includes(count)) {
+            const reportKey = `${targetId}_${count}`;
+            if (!training.reportedTargets) training.reportedTargets = {};
+            if (training.reportedTargets[reportKey]) return;
+
+            // Prepare Message
+            const settings = await getSettings();
+            const stats = calculateStats(facResponses, training.facilitatorQuestions);
+            const overall = calculateOverallStats(facResponses, training.facilitatorQuestions);
+            
+            let message = `*${settings.waHeader}*\n`;
+            message += `--------------------------\n`;
+            message += `Yth. ${facilitator.name}\n`;
+            message += `Pelatihan: ${training.title}\n`;
+            message += `Materi: ${facilitator.subject}\n`;
+            message += `Hari/Tgl: ${formatDateID(facilitator.sessionDate)}\n`;
+            message += `Jumlah Responden: ${count} orang\n\n`;
+            
+            message += `*Ringkasan Nilai:*\n`;
+            stats.forEach(s => {
+                if (s.value !== 'Isian Teks') {
+                    message += `- ${s.label}: *${s.value}*\n`;
+                }
+            });
+
+            message += `\n*Rata-rata Keseluruhan:*\n`;
+            if (overall.hasStar) {
+                const label = getScoreLabel(overall.starAvg, 'star');
+                message += `⭐ Bintang: *${overall.starAvg}/5.0 (${label})*\n`;
+            }
+            if (overall.hasSlider) {
+                const label = getScoreLabel(overall.sliderAvg, 'slider');
+                message += `📊 Skala: *${overall.sliderAvg}/100 (${label})*\n`;
+            }
+
+            const baseUrl = window.location.href.split('#')[0];
+            const commentLink = `${baseUrl}#/comments/${trainingId}/${targetId}`;
+
+            message += `\n\n💬 *Pesan & Masukan Responden:*\n`;
+            message += `Baca seluruh pesan tertulis dari responden melalui tautan berikut:\n${commentLink}`;
+            message += `\n\n${settings.waFooter}`;
+
+            // Send
+            const success = await sendViaFonnte(settings, facilitator.whatsapp, message);
+            if (success) {
+                training.reportedTargets[reportKey] = true;
+                await saveTraining(training);
+                console.log(`AutoReport: SUCCESS sent to ${facilitator.name}`);
+            }
+        }
+    } 
+    // --- LOGIC FOR PROCESS REPORT ---
+    else if (type === 'process') {
+        if (!training.processTarget || !training.processOrganizer || !training.processOrganizer.whatsapp) return;
+        
+        // Check if already sent (Process report is sent ONLY ONCE when target reached)
+        if (training.processReported) return;
+
+        const allResponses = await getResponses(trainingId);
+        const procResponses = allResponses.filter(r => r.type === 'process');
+        const count = procResponses.length;
+
+        console.log(`AutoReport Process Check: Count ${count}, Target: ${training.processTarget}`);
+
+        if (count >= training.processTarget) {
+            const settings = await getSettings();
+            const stats = calculateStats(procResponses, training.processQuestions);
+            const overall = calculateOverallStats(procResponses, training.processQuestions);
+
+            let message = `*${settings.waHeader} - PENYELENGGARAAN*\n`;
+            message += `--------------------------\n`;
+            message += `Yth. ${training.processOrganizer.name}\n`;
+            message += `Pelatihan: ${training.title}\n`;
+            message += `Periode: ${formatDateID(training.startDate)} s.d ${formatDateID(training.endDate)}\n`;
+            message += `Jumlah Responden: ${count} orang\n\n`;
+
+            message += `*Ringkasan Evaluasi Penyelenggaraan:*\n`;
+            stats.forEach(s => {
+                if (s.value !== 'Isian Teks') {
+                    message += `- ${s.label}: *${s.value}*\n`;
+                }
+            });
+
+            message += `\n*Rata-rata Keseluruhan:*\n`;
+            if (overall.hasStar) {
+                const label = getScoreLabel(overall.starAvg, 'star');
+                message += `⭐ Bintang: *${overall.starAvg}/5.0 (${label})*\n`;
+            }
+            if (overall.hasSlider) {
+                const label = getScoreLabel(overall.sliderAvg, 'slider');
+                message += `📊 Skala: *${overall.sliderAvg}/100 (${label})*\n`;
+            }
+            
+            // Note: Currently no specific comment view for Process via link, can be added if needed.
+            // For now, just footer.
+            message += `\n\n${settings.waFooter}`;
+
+            const success = await sendViaFonnte(settings, training.processOrganizer.whatsapp, message);
+            if (success) {
+                training.processReported = true;
+                await saveTraining(training);
+                console.log(`AutoReport: SUCCESS sent to Process Organizer ${training.processOrganizer.name}`);
+            }
+        }
+    }
+};
+
+const sendViaFonnte = async (settings: any, target: string, message: string): Promise<boolean> => {
+    try {
+        const formData = new FormData();
+        formData.append('target', target);
+        formData.append('message', message);
+        formData.append('countryCode', '62'); 
+
+        const response = await fetch(settings.waBaseUrl, {
+            method: 'POST',
+            headers: { 'Authorization': settings.waApiKey },
+            body: formData
+        });
+
+        const result = await response.json();
+        return !!result.status;
+    } catch (error) {
+        console.error('AutoReport: Network Error', error);
+        return false;
+    }
+};
+
+const calculateStats = (responses: any[], questions: any[]) => {
+    return questions.map(q => {
+        if (q.type === 'text') return { label: q.label, value: 'Isian Teks' };
+        const valid = responses.filter((r: any) => typeof r.answers[q.id] === 'number');
+        if (valid.length === 0) return { label: q.label, value: '0.0' };
+        const sum = valid.reduce((a: number, b: any) => a + (b.answers[q.id] as number), 0);
+        const avgVal = sum / valid.length;
+        const avg = avgVal.toFixed(2);
+        
+        let display = '';
+        if (q.type === 'star') {
+            const label = getScoreLabel(avgVal, 'star');
+            display = `${avg}/5.0 (${label})`;
+        } else {
+            const label = getScoreLabel(avgVal, 'slider');
+            display = `${avg}/100 (${label})`;
+        }
+        return { label: q.label, value: display };
+    });
+};
+
+const calculateOverallStats = (items: any[], qs: any[]) => {
+    const starQs = qs.filter((q: any) => q.type === 'star');
+    let starAvg = 0;
+    if (starQs.length > 0) {
+        let totalScore = 0;
+        let totalCount = 0;
+        starQs.forEach((q: any) => {
+           const valid = items.filter((r: any) => typeof r.answers[q.id] === 'number');
+           if(valid.length) {
+               totalScore += valid.reduce((a: number,b: any) => a + (b.answers[q.id] as number), 0);
+               totalCount += valid.length;
+           }
+        });
+        starAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+    }
+
+    const sliderQs = qs.filter((q: any) => q.type === 'slider');
+    let sliderAvg = 0;
+    if (sliderQs.length > 0) {
+        let totalScore = 0;
+        let totalCount = 0;
+        sliderQs.forEach((q: any) => {
+           const valid = items.filter((r: any) => typeof r.answers[q.id] === 'number');
+           if(valid.length) {
+               totalScore += valid.reduce((a: number,b: any) => a + (b.answers[q.id] as number), 0);
+               totalCount += valid.length;
+           }
+        });
+        sliderAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+    }
+    return { starAvg, sliderAvg, hasStar: starQs.length > 0, hasSlider: sliderQs.length > 0 };
+};
