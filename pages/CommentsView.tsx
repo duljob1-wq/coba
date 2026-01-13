@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses } from '../services/storageService';
-import { Training, Response } from '../types';
-import { MessageSquare, Calendar, User, BookOpen, ArrowLeft, Quote } from 'lucide-react';
+import { Training, Response, QuestionType } from '../types';
+import { MessageSquare, Calendar, User, BookOpen, ArrowLeft, Quote, Award, BarChart2 } from 'lucide-react';
 
 export const CommentsView: React.FC = () => {
   const { trainingId, facilitatorId } = useParams<{ trainingId: string; facilitatorId: string }>();
@@ -24,7 +24,7 @@ export const CommentsView: React.FC = () => {
     fetchData();
   }, [trainingId]);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Memuat Pesan...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Memuat Laporan...</div>;
   if (!training || !facilitatorId) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500">Data tidak ditemukan.</div>;
 
   // Find the facilitator details
@@ -38,14 +38,77 @@ export const CommentsView: React.FC = () => {
     r.targetSubject === facilitator.subject
   );
 
-  // Get only text questions
-  const textQuestions = training.facilitatorQuestions.filter(q => q.type === 'text');
-
   // Helper date format
   const formatDateID = (dateStr: string) => {
     if (!dateStr) return '-';
     return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
+
+  // Helper Score Label (Same as other views)
+  const getScoreLabel = (val: number, type: QuestionType) => {
+      if (type === 'star') {
+          if (val >= 4.2) return 'Sangat Baik';
+          if (val >= 3.4) return 'Baik';
+          if (val >= 2.6) return 'Cukup';
+          if (val >= 1.8) return 'Sedang';
+          return 'Kurang';
+      } else {
+          if (val >= 86) return 'Sangat Baik';
+          if (val >= 76) return 'Baik';
+          if (val >= 56) return 'Sedang';
+          return 'Kurang';
+      }
+  };
+
+  const getLabelColor = (val: number, type: QuestionType) => {
+      if (type === 'star') {
+          if (val >= 4.2) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+          if (val >= 3.4) return 'text-blue-600 bg-blue-50 border-blue-200';
+          if (val >= 2.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+          if (val >= 1.8) return 'text-orange-600 bg-orange-50 border-orange-200';
+          return 'text-red-600 bg-red-50 border-red-200';
+      } else {
+          if (val >= 86) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+          if (val >= 76) return 'text-blue-600 bg-blue-50 border-blue-200';
+          if (val >= 56) return 'text-orange-600 bg-orange-50 border-orange-200';
+          return 'text-red-600 bg-red-50 border-red-200';
+      }
+  };
+
+  // --- STATS CALCULATION ---
+  
+  // 1. Calculate Average per Question
+  const variableStats = training.facilitatorQuestions.filter(q => q.type !== 'text').map(q => {
+      const valid = facilitatorResponses.filter(r => typeof r.answers[q.id] === 'number');
+      let avg = 0;
+      if (valid.length > 0) {
+          const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
+          avg = Number((sum / valid.length).toFixed(2));
+      }
+      return { question: q, average: avg };
+  });
+
+  // 2. Calculate Overall Average
+  let totalSum = 0;
+  let totalCount = 0;
+  let dominantType: QuestionType = 'slider';
+
+  training.facilitatorQuestions.forEach(q => {
+      if (q.type !== 'text') {
+          dominantType = q.type; // Capture last type used
+          const valid = facilitatorResponses.filter(r => typeof r.answers[q.id] === 'number');
+          if (valid.length > 0) {
+              const qSum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
+              const qAvg = qSum / valid.length;
+              totalSum += qAvg;
+              totalCount++;
+          }
+      }
+  });
+
+  const overallAvg = totalCount > 0 ? Number((totalSum / totalCount).toFixed(2)) : 0;
+  const overallLabel = getScoreLabel(overallAvg, dominantType);
+  const overallColor = getLabelColor(overallAvg, dominantType);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -53,7 +116,7 @@ export const CommentsView: React.FC = () => {
         <div className="max-w-3xl mx-auto text-white">
             <div className="flex items-center gap-2 mb-4 opacity-80">
                 <Link to="/" className="hover:bg-white/20 p-1 rounded transition"><ArrowLeft size={20}/></Link>
-                <span className="text-sm font-medium tracking-wide uppercase">Kotak Pesan Responden</span>
+                <span className="text-sm font-medium tracking-wide uppercase">Hasil Evaluasi Sesi</span>
             </div>
             <h1 className="text-2xl md:text-3xl font-bold mb-2">{facilitator.name}</h1>
             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6 text-indigo-100 text-sm">
@@ -63,23 +126,69 @@ export const CommentsView: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 -mt-10 pb-20">
-        <div className="bg-white rounded-2xl shadow-xl border border-indigo-50 overflow-hidden">
+      <div className="max-w-3xl mx-auto px-4 -mt-10 pb-20 space-y-6">
+        
+        {/* 1. SCORE SUMMARY CARD */}
+        <div className="bg-white rounded-2xl shadow-xl border border-indigo-50 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
+            <div className="flex items-center gap-4 z-10 w-full sm:w-auto">
+                <div className="bg-indigo-50 p-4 rounded-full text-indigo-600">
+                    <Award size={32} />
+                </div>
+                <div>
+                    <h2 className="text-lg font-bold text-slate-800">Performa Sesi</h2>
+                    <p className="text-slate-500 text-xs">Berdasarkan {facilitatorResponses.length} Responden</p>
+                </div>
+            </div>
+            <div className="flex items-center gap-4 z-10 bg-slate-50 px-6 py-4 rounded-xl border border-slate-100 w-full sm:w-auto justify-between sm:justify-start">
+                 <div className="text-right">
+                    <div className="text-3xl font-bold text-slate-900 leading-none">{overallAvg}</div>
+                    <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Rata-rata</div>
+                 </div>
+                 <div className={`px-4 py-2 rounded-lg border-2 font-bold text-xs uppercase tracking-wide shadow-sm ${overallColor}`}>
+                    {overallLabel}
+                 </div>
+            </div>
+        </div>
+
+        {/* 2. VARIABLE BREAKDOWN */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                <BarChart2 className="text-slate-400" size={20}/>
+                <h3 className="font-bold text-slate-800">Rincian Nilai Variabel</h3>
+            </div>
+            <div className="p-5 grid gap-3 sm:grid-cols-2">
+                {variableStats.length > 0 ? variableStats.map((stat, idx) => (
+                    <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                        <span className="text-xs font-semibold text-slate-700 line-clamp-2 w-2/3" title={stat.question.label}>
+                            {stat.question.label}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-slate-800">{stat.average}</span>
+                            <div className={`w-2 h-2 rounded-full ${stat.average >= (stat.question.type === 'star' ? 3.4 : 76) ? 'bg-emerald-500' : (stat.average >= (stat.question.type === 'star' ? 1.8 : 56) ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
+                        </div>
+                    </div>
+                )) : <div className="col-span-full text-center text-slate-400 text-sm italic">Tidak ada variabel nilai.</div>}
+            </div>
+        </div>
+
+        {/* 3. COMMENTS LIST */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
                 <h2 className="font-bold text-slate-800 flex items-center gap-2">
                     <MessageSquare className="text-indigo-600" size={20}/>
-                    Daftar Pesan Masuk
+                    Pesan & Masukan
                 </h2>
                 <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold">
-                    {facilitatorResponses.length} Responden
+                    Real-time
                 </span>
             </div>
 
             <div className="divide-y divide-slate-100">
-                {textQuestions.length === 0 ? (
+                {training.facilitatorQuestions.filter(q => q.type === 'text').length === 0 ? (
                     <div className="p-8 text-center text-slate-400 italic">Tidak ada pertanyaan isian teks dalam evaluasi ini.</div>
                 ) : (
-                    textQuestions.map(question => {
+                    training.facilitatorQuestions.filter(q => q.type === 'text').map(question => {
                         // Extract answers for this question
                         const answers = facilitatorResponses
                             .map(r => r.answers[question.id])

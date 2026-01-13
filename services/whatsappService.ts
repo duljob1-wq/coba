@@ -73,9 +73,9 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             message += `Pelatihan: ${training.title}\n`;
             message += `Materi: ${facilitator.subject}\n`;
             message += `Hari/Tgl: ${formatDateID(facilitator.sessionDate)}\n`;
-            message += `Jumlah Responden: ${count} orang (Target Tercapai)\n\n`;
+            message += `Jumlah Responden: ${count} orang\n\n`;
             
-            message += `*Ringkasan Nilai Sementara:*\n`;
+            message += `*Ringkasan Nilai:*\n`;
             stats.forEach(s => {
                 if (s.value !== 'Isian Teks') {
                     message += `- ${s.label}: *${s.value}*\n`;
@@ -95,8 +95,8 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const baseUrl = window.location.href.split('#')[0];
             const commentLink = `${baseUrl}#/comments/${trainingId}/${targetId}`;
 
-            message += `\n\n💬 *Pesan & Masukan Responden:*\n`;
-            message += `Baca seluruh pesan tertulis dari responden untuk sesi ini melalui tautan berikut:\n${commentLink}`;
+            message += `\n\n📊 *Hasil Rekap & Pesan Responden:*\n`;
+            message += `Lihat rekapitulasi nilai dan baca seluruh pesan secara real time dari responden untuk sesi ini melalui tautan berikut :\n${commentLink}`;
             message += `\n\n${settings.waFooter}`;
 
             // Send
@@ -150,8 +150,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 message += `📊 Skala: *${overall.sliderAvg}/100 (${label})*\n`;
             }
             
-            // Note: Currently no specific comment view for Process via link, can be added if needed.
-            // For now, just footer.
             message += `\n\n${settings.waFooter}`;
 
             const success = await sendViaFonnte(settings, training.processOrganizer.whatsapp, message);
