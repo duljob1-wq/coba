@@ -377,12 +377,19 @@ export const CreateTraining: React.FC = () => {
       setEditingSessionId(null);
   };
 
-  const toggleSessionLock = (id: string, currentEffectiveState: boolean) => {
-      // Logic: If user clicks lock/unlock, we force it to the OPPOSITE of what it currently is effectively.
-      // This effectively "Manual Overrides" the auto state.
-      setFacilitators(facilitators.map(f => 
-          f.id === id ? { ...f, isOpen: !currentEffectiveState } : f
-      ));
+  const toggleSessionLock = (id: string, currentStatus: boolean | undefined) => {
+      // Cycle: Auto (undefined) -> Manual Lock (false) -> Manual Open (true) -> Auto (undefined)
+      setFacilitators(facilitators.map(f => {
+          if (f.id === id) {
+              let nextStatus: boolean | undefined;
+              if (currentStatus === undefined) nextStatus = false; // Auto -> Lock
+              else if (currentStatus === false) nextStatus = true; // Lock -> Open
+              else nextStatus = undefined; // Open -> Auto
+              
+              return { ...f, isOpen: nextStatus };
+          }
+          return f;
+      }));
   };
 
 
@@ -614,14 +621,27 @@ export const CreateTraining: React.FC = () => {
                                     <div className="p-4 bg-white space-y-2">
                                         {groupItems.map(session => {
                                             // LOGIC UNTUK STATUS BUKA/TUTUP
+                                            const now = new Date();
+                                            const currentHours = now.getHours();
+                                            const currentMinutes = now.getMinutes();
+                                            
                                             const isDateMatch = session.sessionDate === todayStr;
                                             
-                                            // Determine effective status:
-                                            // If session.isOpen is Defined (true/false) -> Manual Override
-                                            // If session.isOpen is Undefined -> Auto based on date & time (logic handled in RespondentView mainly, here we show simplified state)
+                                            // Check Time
+                                            let isTimePassed = true;
+                                            if (session.sessionStartTime) {
+                                                const [h, m] = session.sessionStartTime.split(':').map(Number);
+                                                if (currentHours < h || (currentHours === h && currentMinutes < m)) {
+                                                    isTimePassed = false;
+                                                }
+                                            }
+
+                                            // Determine effective status
                                             const isManual = session.isOpen !== undefined;
-                                            // Note: In Create View, we show "Automatic" as generic "Clock" icon. We don't check time here because it's static.
-                                            const effectiveOpen = isManual ? session.isOpen : isDateMatch;
+                                            const autoOpen = isDateMatch && isTimePassed;
+                                            
+                                            // Visual State
+                                            const effectiveOpen = isManual ? session.isOpen : autoOpen;
 
                                             // Determine Badge Appearance
                                             let badgeClass = '';
@@ -630,18 +650,28 @@ export const CreateTraining: React.FC = () => {
 
                                             if (isManual) {
                                                 if (session.isOpen) {
-                                                    badgeClass = 'bg-emerald-100 text-emerald-700';
-                                                    badgeText = 'Dibuka (Manual)';
+                                                    badgeClass = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+                                                    badgeText = 'MANUAL: DIBUKA';
                                                     badgeIcon = <Unlock size={10} />;
                                                 } else {
-                                                    badgeClass = 'bg-red-100 text-red-700';
-                                                    badgeText = 'Dikunci (Manual)';
+                                                    badgeClass = 'bg-red-100 text-red-700 border border-red-200';
+                                                    badgeText = 'MANUAL: DIKUNCI';
                                                     badgeIcon = <Lock size={10} />;
                                                 }
                                             } else {
-                                                badgeClass = 'bg-slate-100 text-slate-500';
-                                                badgeText = 'Otomatis (Sesuai Jadwal)';
-                                                badgeIcon = <Clock size={10} />;
+                                                if (effectiveOpen) {
+                                                    badgeClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+                                                    badgeText = 'OTOMATIS: AKTIF';
+                                                    badgeIcon = <Clock size={10} />;
+                                                } else if (!isDateMatch) {
+                                                    badgeClass = 'bg-slate-100 text-slate-500 border border-slate-200';
+                                                    badgeText = 'OTOMATIS: MENUNGGU TANGGAL';
+                                                    badgeIcon = <Calendar size={10} />;
+                                                } else {
+                                                    badgeClass = 'bg-amber-100 text-amber-700 border border-amber-200';
+                                                    badgeText = 'OTOMATIS: MENUNGGU WAKTU';
+                                                    badgeIcon = <Clock size={10} />;
+                                                }
                                             }
 
                                             return (
@@ -695,7 +725,7 @@ export const CreateTraining: React.FC = () => {
                                                                 <div className="flex items-center gap-2 text-slate-500 text-xs sm:text-sm">
                                                                     <Calendar size={14}/> {new Date(session.sessionDate).toLocaleDateString('id-ID')}
                                                                     {session.sessionStartTime && (
-                                                                        <span className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded text-xs font-mono ml-2 border border-slate-200 text-slate-600">
+                                                                        <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono ml-2 border ${isManual ? 'bg-slate-100 border-slate-200 text-slate-500' : (isDateMatch && !isTimePassed ? 'bg-amber-50 border-amber-200 text-amber-700 font-bold' : 'bg-slate-100 border-slate-200 text-slate-600')}`}>
                                                                             <Clock size={12}/> {session.sessionStartTime}
                                                                         </span>
                                                                     )}
@@ -710,11 +740,15 @@ export const CreateTraining: React.FC = () => {
                                                                     <Edit2 size={16}/>
                                                                 </button>
                                                                 <button 
-                                                                    onClick={() => toggleSessionLock(session.id, !!effectiveOpen)} 
-                                                                    className={`p-1.5 rounded-lg transition ${effectiveOpen ? 'text-emerald-600 hover:bg-emerald-100' : 'text-red-600 hover:bg-red-100'}`}
-                                                                    title={effectiveOpen ? "Klik untuk KUNCI MANUAL" : "Klik untuk BUKA MANUAL"}
+                                                                    onClick={() => toggleSessionLock(session.id, session.isOpen)} 
+                                                                    className={`p-1.5 rounded-lg transition ${
+                                                                        isManual 
+                                                                            ? (session.isOpen ? 'text-emerald-600 hover:bg-emerald-50' : 'text-red-600 hover:bg-red-50')
+                                                                            : 'text-slate-400 hover:text-indigo-600 hover:bg-slate-100'
+                                                                    }`}
+                                                                    title="Klik untuk ubah status (Auto -> Kunci -> Buka -> Auto)"
                                                                 >
-                                                                    {effectiveOpen ? <Unlock size={16}/> : <Lock size={16}/>}
+                                                                    {isManual ? (session.isOpen ? <Unlock size={16}/> : <Lock size={16}/>) : <Clock size={16}/>}
                                                                 </button>
                                                                 <button onClick={() => removeSession(session.id)} className="text-slate-300 hover:text-red-500 ml-1 p-1.5 transition rounded-lg hover:bg-red-50" title="Hapus Sesi"><Trash2 size={16}/></button>
                                                             </div>
