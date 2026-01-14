@@ -96,10 +96,9 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
 
             if (shortSnippets.length > 0) {
-                message += `\n*Cuplikan Pesan Peserta :*\n`;
-                shortSnippets.forEach(s => {
-                    message += `_"${s}"_\n`;
-                });
+                // Format: "Pesan 1", "Pesan 2"
+                const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
+                message += `\n*Cuplikan Pesan Peserta :*\n${joinedSnippets}\n`;
             }
             // ---------------------------------
 
