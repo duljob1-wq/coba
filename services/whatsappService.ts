@@ -82,6 +82,27 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 }
             });
 
+            // --- NEW: Add Comment Snippets ---
+            const textQuestions = training.facilitatorQuestions.filter(q => q.type === 'text');
+            let allComments: string[] = [];
+            textQuestions.forEach(q => {
+                const answers = facResponses
+                    .map(r => r.answers[q.id])
+                    .filter(a => typeof a === 'string' && a.trim() !== '') as string[];
+                allComments = [...allComments, ...answers];
+            });
+
+            // Sort by length (shortest first) and take top 2
+            const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
+
+            if (shortSnippets.length > 0) {
+                message += `\n*Cuplikan Pesan Peserta :*\n`;
+                shortSnippets.forEach(s => {
+                    message += `_"${s}"_\n`;
+                });
+            }
+            // ---------------------------------
+
             message += `\n*Rata-rata Keseluruhan:*\n`;
             if (overall.hasStar) {
                 const label = getScoreLabel(overall.starAvg, 'star');
@@ -89,7 +110,8 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
             if (overall.hasSlider) {
                 const label = getScoreLabel(overall.sliderAvg, 'slider');
-                message += `📊 Skala: *${overall.sliderAvg}/100 (${label})*\n`;
+                // Remove /100 suffix
+                message += `📊 Skala: *${overall.sliderAvg} (${label})*\n`;
             }
 
             const baseUrl = window.location.href.split('#')[0];
@@ -147,7 +169,8 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
             if (overall.hasSlider) {
                 const label = getScoreLabel(overall.sliderAvg, 'slider');
-                message += `📊 Skala: *${overall.sliderAvg}/100 (${label})*\n`;
+                // Remove /100 suffix
+                message += `📊 Skala: *${overall.sliderAvg} (${label})*\n`;
             }
             
             message += `\n\n${settings.waFooter}`;
@@ -198,7 +221,8 @@ const calculateStats = (responses: any[], questions: any[]) => {
             display = `${avg}/5.0 (${label})`;
         } else {
             const label = getScoreLabel(avgVal, 'slider');
-            display = `${avg}/100 (${label})`;
+            // Remove /100 suffix
+            display = `${avg} (${label})`;
         }
         return { label: q.label, value: display };
     });
