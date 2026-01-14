@@ -32,8 +32,10 @@ const getScoreLabel = (val: number, type: QuestionType) => {
 };
 
 interface SessionExportData {
+    name: string; // Added name to session data for flat list
     subject: string;
     sessionDate: string;
+    order: number; // For sorting
     responses: Response[];
     averages: Record<string, string>; // Formatted "80 (Baik)"
     comments: Record<string, string[]>;
@@ -73,8 +75,10 @@ const processDataForExport = (training: Training, responses: Response[]) => {
         const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
         
         session = {
+            name: name,
             subject: subject,
             sessionDate: facData ? facData.sessionDate : '',
+            order: facData ? (facData.order || 0) : 0,
             responses: [],
             averages: {},
             comments: {},
@@ -159,15 +163,41 @@ const processDataForExport = (training: Training, responses: Response[]) => {
   return result;
 };
 
-// Helper to sort facilitator names based on training.facilitators order
-const getSortedFacilitatorNames = (dataFacilitators: Record<string, any>, training: Training) => {
-    return Object.keys(dataFacilitators).sort((a, b) => {
+// Helper: Get ALL sessions in a flat list sorted by DATE (for Section A)
+const getFlatChronologicalSessions = (dataFacilitators: Record<string, SessionExportData[]>) => {
+    let allSessions: SessionExportData[] = [];
+    Object.values(dataFacilitators).forEach(sessions => {
+        allSessions = [...allSessions, ...sessions];
+    });
+
+    return allSessions.sort((a, b) => {
+        if (a.sessionDate < b.sessionDate) return -1;
+        if (a.sessionDate > b.sessionDate) return 1;
+        return a.order - b.order;
+    });
+};
+
+// Helper: Get Sorted Facilitator Names (for Section B grouping), but ensure inner sessions are date sorted
+const getSortedFacilitatorNamesForRecap = (dataFacilitators: Record<string, SessionExportData[]>, training: Training) => {
+    // 1. Sort Names first
+    const names = Object.keys(dataFacilitators).sort((a, b) => {
         const facA = training.facilitators.find(f => f.name === a);
         const facB = training.facilitators.find(f => f.name === b);
         const orderA = facA?.order || 0;
         const orderB = facB?.order || 0;
         return orderA - orderB;
     });
+
+    // 2. Sort Sessions inside each Name by Date
+    names.forEach(name => {
+        dataFacilitators[name].sort((a, b) => {
+            if (a.sessionDate < b.sessionDate) return -1;
+            if (a.sessionDate > b.sessionDate) return 1;
+            return 0;
+        });
+    });
+
+    return names;
 };
 
 export const exportToPDF = async (training: Training) => {
@@ -180,11 +210,10 @@ export const exportToPDF = async (training: Training) => {
   doc.text('Laporan Rekapitulasi Evaluasi Pelatihan', 14, 20);
   doc.setFontSize(10);
   
-  // Wrap Title if too long (max width 180mm)
+  // Wrap Title if too long
   const titleLines = doc.splitTextToSize(`Judul: ${training.title}`, 180);
   doc.text(titleLines, 14, 28);
   
-  // Adjust Y based on number of title lines (each line approx 5mm height)
   let y = 28 + (titleLines.length * 5); 
   
   doc.text(`Periode: ${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`, 14, y);
@@ -192,95 +221,89 @@ export const exportToPDF = async (training: Training) => {
   doc.text(`Dicetak pada: ${timestamp}`, 14, y);
   y += 10;
 
-  // --- BAGIAN A: DETAIL FASILITATOR ---
+  // --- BAGIAN A: DETAIL FASILITATOR (FLAT LIST, CHRONOLOGICAL) ---
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text('A. Evaluasi Detail Fasilitator', 14, y);
   y += 6;
 
-  const sortedNames = getSortedFacilitatorNames(data.facilitators, training);
+  const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
-  sortedNames.forEach((name) => {
-    const sessions = data.facilitators[name];
-
+  flatSessions.forEach((session) => {
     // Page break check (Name Header)
-    if (y > 250) { doc.addPage(); y = 20; }
+    if (y > 240) { doc.addPage(); y = 20; }
     
     // Header Fasilitator Name
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setFillColor(230, 230, 250); // Light Purple
     doc.rect(14, y - 5, 182, 7, 'F');
-    doc.text(`Nama Fasilitator: ${name}`, 16, y);
+    doc.text(`Nama Fasilitator: ${session.name}`, 16, y);
     y += 6;
 
-    // Loop through Sessions (Materi) for this person
-    sessions.forEach((session: SessionExportData) => {
-        if (y > 240) { doc.addPage(); y = 20; }
+    // Session Info
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bolditalic");
+    const dateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
+    // Wrap Subject
+    const subjectLines = doc.splitTextToSize(`Materi: ${session.subject}${dateStr}`, 180);
+    doc.text(subjectLines, 14, y);
+    y += (subjectLines.length * 4); // Adjust spacing based on wrapped text
 
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bolditalic");
-        const dateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
-        // Wrap Subject
-        const subjectLines = doc.splitTextToSize(`Materi: ${session.subject}${dateStr}`, 180);
-        doc.text(subjectLines, 14, y);
-        y += (subjectLines.length * 4); // Adjust spacing based on wrapped text
+    // 1. Tabel Nilai
+    const scoreRows = training.facilitatorQuestions
+    .filter(q => q.type !== 'text')
+    .map(q => [q.label, session.averages[q.id] || '0.00 (Kurang)']);
 
-        // 1. Tabel Nilai
-        const scoreRows = training.facilitatorQuestions
-        .filter(q => q.type !== 'text')
-        .map(q => [q.label, session.averages[q.id] || '0.00 (Kurang)']);
+    scoreRows.push(['Rata-rata Keseluruhan', session.overall]);
 
-        scoreRows.push(['Rata-rata Keseluruhan', session.overall]);
-
-        autoTable(doc, {
-            startY: y,
-            head: [['Variabel Penilaian', 'Rata-rata & Predikat']],
-            body: scoreRows,
-            theme: 'grid',
-            headStyles: { fillColor: [79, 70, 229], fontSize: 9 },
-            bodyStyles: { fontSize: 9 },
-            columnStyles: { 0: { cellWidth: 120 }, 1: { fontStyle: 'bold' } },
-            didParseCell: function (data) {
-                if (data.row.index === scoreRows.length - 1 && data.section === 'body') {
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [240, 240, 255]; 
-                }
-            },
-            margin: { left: 14, right: 14 }
-        });
-        
-        y = (doc as any).lastAutoTable.finalY + 5;
-
-        // 2. Daftar Komentar
-        const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
-        textQs.forEach(q => {
-            const comments = session.comments[q.id];
-            if (comments && comments.length > 0) {
-                if (y > 260) { doc.addPage(); y = 20; }
-                
-                doc.setFont("helvetica", "bold");
-                doc.setFontSize(9);
-                doc.text(`Komentar - ${q.label}:`, 14, y);
-                y += 2;
-
-                const commentRows = comments.map((c: string) => [`• ${c}`]);
-                autoTable(doc, {
-                    startY: y,
-                    body: commentRows,
-                    theme: 'plain',
-                    styles: { fontSize: 9, cellPadding: 1, overflow: 'linebreak' },
-                    margin: { left: 14, right: 14 }
-                });
-                y = (doc as any).lastAutoTable.finalY + 3;
+    autoTable(doc, {
+        startY: y,
+        head: [['Variabel Penilaian', 'Rata-rata & Predikat']],
+        body: scoreRows,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229], fontSize: 9 },
+        bodyStyles: { fontSize: 9 },
+        columnStyles: { 0: { cellWidth: 120 }, 1: { fontStyle: 'bold' } },
+        didParseCell: function (data) {
+            if (data.row.index === scoreRows.length - 1 && data.section === 'body') {
+                data.cell.styles.fontStyle = 'bold';
+                data.cell.styles.fillColor = [240, 240, 255]; 
             }
-        });
-        y += 4; // Spasi antar materi
+        },
+        margin: { left: 14, right: 14 }
     });
-    y += 2; // Spasi antar Orang
+    
+    y = (doc as any).lastAutoTable.finalY + 5;
+
+    // 2. Daftar Komentar
+    const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
+    textQs.forEach(q => {
+        const comments = session.comments[q.id];
+        if (comments && comments.length > 0) {
+            if (y > 260) { doc.addPage(); y = 20; }
+            
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(9);
+            doc.text(`Komentar - ${q.label}:`, 14, y);
+            y += 2;
+
+            const commentRows = comments.map((c: string) => [`• ${c}`]);
+            autoTable(doc, {
+                startY: y,
+                body: commentRows,
+                theme: 'plain',
+                styles: { fontSize: 9, cellPadding: 1, overflow: 'linebreak' },
+                margin: { left: 14, right: 14 }
+            });
+            y = (doc as any).lastAutoTable.finalY + 3;
+        }
+    });
+    y += 4; // Spasi antar materi/orang
   });
 
   // --- BAGIAN B: REKAPITULASI (Summary Section B) ---
+  // Group by Name, but ensure dates inside are sorted
   doc.addPage();
   y = 20;
   
@@ -294,7 +317,9 @@ export const exportToPDF = async (training: Training) => {
   let grandTotal = 0;
   let grandCount = 0;
 
-  // Use Sorted Names here as well
+  // Use Sorted Names here as well (Grouped by Name)
+  const sortedNames = getSortedFacilitatorNamesForRecap(data.facilitators, training);
+
   sortedNames.forEach((name) => {
       data.facilitators[name].forEach((session: SessionExportData) => {
         summaryRows.push([
@@ -326,10 +351,9 @@ export const exportToPDF = async (training: Training) => {
       columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 4: { fontStyle: 'bold', halign: 'center' } },
       margin: { left: 14, right: 14 },
       didParseCell: function (data) {
-        // Style untuk baris terakhir (Rata-rata Total)
         if (data.section === 'body' && data.row.index === summaryRows.length - 1) {
              data.cell.styles.fontStyle = 'bold';
-             data.cell.styles.fillColor = [229, 231, 235]; // Gray-200
+             data.cell.styles.fillColor = [229, 231, 235]; 
         }
       }
   });
@@ -344,7 +368,6 @@ export const exportToPDF = async (training: Training) => {
   doc.text('C. Evaluasi Penyelenggaraan', 14, y);
   y += 6;
 
-  // Display Process Organizer Name if available
   if (training.processOrganizer && training.processOrganizer.name) {
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
@@ -413,49 +436,46 @@ export const exportToExcel = async (training: Training) => {
       []
   ];
 
-  const sortedNames = getSortedFacilitatorNames(data.facilitators, training);
-
-  // --- SHEET 1: DETAIL FASILITATOR (Section A) ---
+  // --- SHEET 1: DETAIL FASILITATOR (Section A) - FLAT LIST CHRONOLOGICAL ---
   const detailRows: any[] = [...infoData, ['A. DETAIL EVALUASI FASILITATOR'], []];
   
-  sortedNames.forEach((name) => {
-      detailRows.push([`NAMA FASILITATOR: ${name}`]);
-      
-      data.facilitators[name].forEach((session: SessionExportData) => {
-        detailRows.push([`Materi: ${session.subject}`, `Tanggal: ${formatDateID(session.sessionDate)}`]);
-        
-        detailRows.push(['Variabel', 'Nilai']);
-        training.facilitatorQuestions.filter(q => q.type !== 'text').forEach(q => {
-            detailRows.push([q.label, session.averages[q.id]]);
-        });
-        detailRows.push(['Rata-rata Keseluruhan', session.overall]);
+  const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
-        // Comments
-        const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
-        if (textQs.length > 0) {
-            detailRows.push(['Komentar / Saran Responden:']);
-            textQs.forEach(q => {
-                const cmts = session.comments[q.id];
-                if (cmts && cmts.length > 0) {
-                   detailRows.push([`[${q.label}]`]);
-                   cmts.forEach((c: string) => detailRows.push([` - ${c}`]));
-                }
-            });
-        }
-        detailRows.push([]); // Spacer per materi
+  flatSessions.forEach((session) => {
+      detailRows.push([`NAMA FASILITATOR: ${session.name}`]);
+      detailRows.push([`Materi: ${session.subject}`, `Tanggal: ${formatDateID(session.sessionDate)}`]);
+      
+      detailRows.push(['Variabel', 'Nilai']);
+      training.facilitatorQuestions.filter(q => q.type !== 'text').forEach(q => {
+          detailRows.push([q.label, session.averages[q.id]]);
       });
-      detailRows.push([]); // Spacer per orang
+      detailRows.push(['Rata-rata Keseluruhan', session.overall]);
+
+      const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
+      if (textQs.length > 0) {
+          detailRows.push(['Komentar / Saran Responden:']);
+          textQs.forEach(q => {
+              const cmts = session.comments[q.id];
+              if (cmts && cmts.length > 0) {
+                 detailRows.push([`[${q.label}]`]);
+                 cmts.forEach((c: string) => detailRows.push([` - ${c}`]));
+              }
+          });
+      }
+      detailRows.push([]); // Spacer
   });
 
   const detailWs = XLSX.utils.aoa_to_sheet(detailRows);
   XLSX.utils.book_append_sheet(wb, detailWs, 'A. Detail Fasilitator');
 
-  // --- SHEET 2: REKAPITULASI (Summary Section B) ---
+  // --- SHEET 2: REKAPITULASI (Section B) - GROUPED NAME, SORTED DATE ---
   const summaryHeader = ['No', 'Nama Fasilitator', 'Materi', 'Tanggal', 'Nilai Akhir'];
   const summaryRows: any[] = [];
   let no = 1;
   let grandTotal = 0;
   let grandCount = 0;
+
+  const sortedNames = getSortedFacilitatorNamesForRecap(data.facilitators, training);
 
   sortedNames.forEach((name) => {
     data.facilitators[name].forEach((session: SessionExportData) => {
@@ -465,12 +485,10 @@ export const exportToExcel = async (training: Training) => {
     });
   });
 
-  // Calculate Grand Total
   const grandAvg = grandCount > 0 ? grandTotal / grandCount : 0;
   const grandLabelType: QuestionType = grandAvg > 5 ? 'slider' : 'star';
   const grandDisplay = `${grandAvg.toFixed(2)} (${getScoreLabel(grandAvg, grandLabelType)})`;
 
-  // Push total row
   summaryRows.push(['', '', '', 'RATA-RATA TOTAL', grandDisplay]);
 
   const rekapWs = XLSX.utils.aoa_to_sheet([...infoData, ['B. REKAPITULASI NILAI KESELURUHAN'], [], summaryHeader, ...summaryRows]);
@@ -533,79 +551,73 @@ export const exportToWord = async (training: Training) => {
     spacing: { after: 400 },
   }));
 
-  // --- A. DETAIL FASILITATOR ---
+  // --- A. DETAIL FASILITATOR (FLAT CHRONOLOGICAL) ---
   sections.push(new Paragraph({ text: "A. Evaluasi Detail Fasilitator", heading: HeadingLevel.HEADING_2 }));
   
-  const sortedNames = getSortedFacilitatorNames(data.facilitators, training);
+  const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
-  sortedNames.forEach((name) => {
+  flatSessions.forEach((session) => {
     sections.push(new Paragraph({ 
-        children: [new TextRun({ text: `Nama Fasilitator: ${name}`, color: "4F46E5", bold: true })], 
+        children: [new TextRun({ text: `Nama Fasilitator: ${session.name}`, color: "4F46E5", bold: true })], 
         spacing: { before: 200 } 
     }));
     
-    data.facilitators[name].forEach((session: SessionExportData) => {
-        const sessionDateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
-        sections.push(new Paragraph({ text: `Materi: ${session.subject}${sessionDateStr}`, bold: true, spacing: { before: 100 } }));
+    const sessionDateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
+    sections.push(new Paragraph({ text: `Materi: ${session.subject}${sessionDateStr}`, bold: true, spacing: { before: 100 } }));
 
-        // Table Scores
-        const rows = [
-            new TableRow({
-                children: [
-                new TableCell({ children: [new Paragraph({ text: "Variabel", bold: true })], width: { size: 60, type: WidthType.PERCENTAGE } }),
-                new TableCell({ children: [new Paragraph({ text: "Nilai & Predikat", bold: true })], width: { size: 40, type: WidthType.PERCENTAGE } }),
-                ],
-            }),
-        ];
+    // Table Scores
+    const rows = [
+        new TableRow({
+            children: [
+            new TableCell({ children: [new Paragraph({ text: "Variabel", bold: true })], width: { size: 60, type: WidthType.PERCENTAGE } }),
+            new TableCell({ children: [new Paragraph({ text: "Nilai & Predikat", bold: true })], width: { size: 40, type: WidthType.PERCENTAGE } }),
+            ],
+        }),
+    ];
 
-        training.facilitatorQuestions.filter(q => q.type !== 'text').forEach(q => {
-            rows.push(new TableRow({
-                children: [
-                new TableCell({ children: [new Paragraph(q.label)] }),
-                new TableCell({ children: [new Paragraph(session.averages[q.id] || "0.00")] }),
-                ],
-            }));
-        });
-
-        // Overall Row
+    training.facilitatorQuestions.filter(q => q.type !== 'text').forEach(q => {
         rows.push(new TableRow({
             children: [
-                new TableCell({ children: [new Paragraph({ text: "Rata-rata Keseluruhan", bold: true })] }),
-                new TableCell({ children: [new Paragraph({ text: session.overall, bold: true })] }),
+            new TableCell({ children: [new Paragraph(q.label)] }),
+            new TableCell({ children: [new Paragraph(session.averages[q.id] || "0.00")] }),
             ],
         }));
-
-        sections.push(new Table({
-            width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: rows,
-            borders: {
-                top: { style: BorderStyle.SINGLE, size: 1 },
-                bottom: { style: BorderStyle.SINGLE, size: 1 },
-                left: { style: BorderStyle.SINGLE, size: 1 },
-                right: { style: BorderStyle.SINGLE, size: 1 },
-                insideHorizontal: { style: BorderStyle.SINGLE, size: 1 },
-                insideVertical: { style: BorderStyle.SINGLE, size: 1 },
-            }
-        }));
-
-        // Text Comments
-        const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
-        textQs.forEach(q => {
-            const comments = session.comments[q.id];
-            if (comments && comments.length > 0) {
-                sections.push(new Paragraph({ text: `Komentar - ${q.label}:`, bold: true, spacing: { before: 100 } }));
-                comments.forEach((c: string) => {
-                    sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 } }));
-                });
-            }
-        });
-        sections.push(new Paragraph({ text: "", spacing: { after: 100 } })); // Spacer per materi
     });
 
-    sections.push(new Paragraph({ text: "", spacing: { after: 200 } })); // Spacer per orang
+    rows.push(new TableRow({
+        children: [
+            new TableCell({ children: [new Paragraph({ text: "Rata-rata Keseluruhan", bold: true })] }),
+            new TableCell({ children: [new Paragraph({ text: session.overall, bold: true })] }),
+        ],
+    }));
+
+    sections.push(new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: rows,
+        borders: {
+            top: { style: BorderStyle.SINGLE, size: 1 },
+            bottom: { style: BorderStyle.SINGLE, size: 1 },
+            left: { style: BorderStyle.SINGLE, size: 1 },
+            right: { style: BorderStyle.SINGLE, size: 1 },
+            insideHorizontal: { style: BorderStyle.SINGLE, size: 1 },
+            insideVertical: { style: BorderStyle.SINGLE, size: 1 },
+        }
+    }));
+
+    const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
+    textQs.forEach(q => {
+        const comments = session.comments[q.id];
+        if (comments && comments.length > 0) {
+            sections.push(new Paragraph({ text: `Komentar - ${q.label}:`, bold: true, spacing: { before: 100 } }));
+            comments.forEach((c: string) => {
+                sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 } }));
+            });
+        }
+    });
+    sections.push(new Paragraph({ text: "", spacing: { after: 200 } })); 
   });
 
-  // --- B. REKAPITULASI ---
+  // --- B. REKAPITULASI (GROUPED BY NAME, SORTED DATE) ---
   sections.push(new Paragraph({ children: [new PageBreak()] }));
   sections.push(new Paragraph({ text: "B. Rekapitulasi Nilai Keseluruhan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
@@ -624,6 +636,8 @@ export const exportToWord = async (training: Training) => {
   let grandTotal = 0;
   let grandCount = 0;
 
+  const sortedNames = getSortedFacilitatorNamesForRecap(data.facilitators, training);
+
   sortedNames.forEach((name) => {
       data.facilitators[name].forEach((session: SessionExportData) => {
         summaryRows.push(new TableRow({
@@ -639,12 +653,10 @@ export const exportToWord = async (training: Training) => {
       });
   });
 
-  // Calculate Grand Total for Word
   const grandAvg = grandCount > 0 ? grandTotal / grandCount : 0;
   const grandLabelType: QuestionType = grandAvg > 5 ? 'slider' : 'star';
   const grandDisplay = `${grandAvg.toFixed(2)} (${getScoreLabel(grandAvg, grandLabelType)})`;
 
-  // Append Grand Total Row
   summaryRows.push(new TableRow({
       children: [
         new TableCell({ children: [new Paragraph("")] }),
@@ -672,7 +684,6 @@ export const exportToWord = async (training: Training) => {
   sections.push(new Paragraph({ children: [new PageBreak()] }));
   sections.push(new Paragraph({ text: "C. Evaluasi Penyelenggaraan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
-  // Show Organizer Name
   if (training.processOrganizer && training.processOrganizer.name) {
        sections.push(new Paragraph({ text: `Penanggung Jawab: ${training.processOrganizer.name}`, spacing: { after: 100 } }));
   }

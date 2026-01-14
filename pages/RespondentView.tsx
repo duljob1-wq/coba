@@ -7,7 +7,7 @@ import { Training, Response } from '../types';
 import { StarRating } from '../components/StarRating';
 import { SliderRating } from '../components/SliderRating';
 import { v4 as uuidv4 } from 'uuid';
-import { CheckCircle, AlertOctagon, User, Layout, ChevronRight, Home, ArrowLeft, Lock, Calendar, CheckSquare, ShieldCheck, Clock } from 'lucide-react';
+import { CheckCircle, AlertOctagon, User, Layout, ChevronRight, Home, ArrowLeft, Lock, Calendar, CheckSquare, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
 
 type Tab = 'facilitator' | 'process';
 
@@ -32,6 +32,9 @@ export const RespondentView: React.FC = () => {
   const [customFacName, setCustomFacName] = useState('');
   const [customFacSubject, setCustomFacSubject] = useState('');
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
+  
+  // Validation State
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadTraining = async () => {
@@ -89,14 +92,17 @@ export const RespondentView: React.FC = () => {
       }
       setActiveTab(tab);
       setAnswers({});
+      setValidationError(null);
   };
 
   const handleAnswerChange = (qId: string, val: string | number) => {
     setAnswers(prev => ({ ...prev, [qId]: val }));
+    if (validationError) setValidationError(null); // Clear error on interaction
   };
 
   const resetForm = () => {
     setAnswers({});
+    setValidationError(null);
     setSubmitted(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
@@ -109,11 +115,13 @@ export const RespondentView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!training) return;
+    setValidationError(null);
 
     let targetName = '';
     let targetSubject = '';
     let facId = '';
 
+    // 1. VALIDATE CONTEXT (Facilitator Selection)
     if (activeTab === 'facilitator') {
       if (facilitatorMode === 'select') {
         const fac = training.facilitators.find(f => f.id === selectedFacilitatorId);
@@ -142,6 +150,45 @@ export const RespondentView: React.FC = () => {
       targetName = "Proses Penyelenggaraan";
     }
 
+    // 2. VALIDATE ANSWERS (Strict: All Must be Filled/Touched)
+    const questionsToCheck = activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
+    const missingFields = questionsToCheck.filter(q => {
+        const val = answers[q.id];
+        
+        // Text: Must be non-empty string
+        if (q.type === 'text') {
+            return !val || String(val).trim() === '';
+        }
+        
+        // Slider: Must be defined (user must interact with it)
+        // If val is undefined, it means user didn't touch it (even if UI shows 45 default)
+        if (q.type === 'slider') {
+            return val === undefined || val === null;
+        }
+        
+        // Star: Must be > 0
+        return !val || val === 0;
+    });
+
+    if (missingFields.length > 0) {
+        // Build detailed error message
+        const errorList = missingFields.map(q => {
+             // Calculate real index (1-based) from the original list
+             const index = questionsToCheck.findIndex(item => item.id === q.id) + 1;
+             
+             let reason = "belum diisi";
+             if (q.type === 'slider') reason = "belum digeser (wajib ubah dari posisi awal)";
+             if (q.type === 'star') reason = "belum diberi bintang";
+             if (q.type === 'text') reason = "saran/komentar belum ditulis";
+
+             return `• Pertanyaan ${index} (${q.label}) : ${reason}`;
+        }).join('\n');
+
+        setValidationError(`Mohon lengkapi bagian berikut sebelum mengirim:\n${errorList}`);
+        return;
+    }
+
+    // 3. SUBMIT
     const response: Response = {
       id: uuidv4(),
       trainingId: training.id,
@@ -415,6 +462,16 @@ export const RespondentView: React.FC = () => {
           ))}
 
           <div className="pt-4 pb-12">
+            {/* Validation Notice */}
+            {validationError && (
+                <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs flex items-start gap-3 animate-pulse">
+                    <AlertCircle className="shrink-0 mt-0.5 text-red-600" size={16} />
+                    <div className="whitespace-pre-wrap font-medium leading-relaxed">
+                        {validationError}
+                    </div>
+                </div>
+            )}
+
             <button
                 type="submit"
                 disabled={activeTab === 'facilitator' && facilitatorMode === 'select' && availableFacilitators.length === 0}

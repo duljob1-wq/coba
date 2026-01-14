@@ -42,36 +42,112 @@ export const ResultsView: React.FC = () => {
   const filteredResponses = responses.filter(r => r.type === activeTab);
   const questions = activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
 
-  // Group by Name, then by Subject
-  const groupedData: Record<string, Record<string, Response[]>> = {};
+  // --- DATA PROCESSING START ---
   
-  // Logic to handle Process type (which has no targetName/Subject usually)
+  // Interface for flattened session data
+  interface SessionData {
+      name: string;
+      subject: string;
+      date: string;
+      items: Response[];
+      overall: {
+          starAvg: number;
+          sliderAvg: number;
+          hasStar: boolean;
+          hasSlider: boolean;
+      };
+  }
+
+  // 1. Group responses into unique sessions (Name + Subject)
+  const groupedSessions: Record<string, Response[]> = {};
+  
   if (activeTab === 'process') {
-      groupedData['Penyelenggaraan'] = { 'Umum': filteredResponses };
+      groupedSessions['Penyelenggaraan|Umum'] = filteredResponses;
   } else {
       filteredResponses.forEach(r => {
-          const nameKey = r.targetName || 'Umum';
-          const subjectKey = r.targetSubject || 'Umum';
-
-          if (!groupedData[nameKey]) {
-              groupedData[nameKey] = {};
-          }
-          if (!groupedData[nameKey][subjectKey]) {
-              groupedData[nameKey][subjectKey] = [];
-          }
-          groupedData[nameKey][subjectKey].push(r);
+          const name = r.targetName || 'Umum';
+          const subject = r.targetSubject || 'Umum';
+          const key = `${name}|${subject}`;
+          if (!groupedSessions[key]) groupedSessions[key] = [];
+          groupedSessions[key].push(r);
       });
   }
 
-  // SORTING LOGIC: Sort facilitator names based on training.facilitators[i].order
-  const sortedNames = Object.keys(groupedData).sort((a, b) => {
-      if (activeTab === 'process') return 0; // No sorting needed for single process group
-      const facA = training.facilitators.find(f => f.name === a);
-      const facB = training.facilitators.find(f => f.name === b);
+  // 2. Flatten to array and Attach Dates from Training Data
+  let flatSessions: SessionData[] = Object.keys(groupedSessions).map(key => {
+      const [name, subject] = key.split('|');
+      const items = groupedSessions[key];
+      
+      // Find Date Metadata
+      let date = '';
+      if (activeTab === 'facilitator') {
+          const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
+          if (facData) date = facData.sessionDate;
+      }
+
+      // Calculate Stats immediately
+      const overall = calculateOverall(items, questions);
+
+      return { name, subject, date, items, overall };
+  });
+
+  // 3. SORTING LOGIC: Chronological (Date Ascending)
+  // If dates are equal, fallback to Order or Name
+  flatSessions.sort((a, b) => {
+      if (activeTab === 'process') return 0;
+
+      // Primary: Date Ascending
+      if (a.date && b.date) {
+          if (a.date < b.date) return -1;
+          if (a.date > b.date) return 1;
+      }
+      
+      // Secondary: Original Order in Training Data (to keep consistent within same day)
+      const facA = training.facilitators.find(f => f.name === a.name && f.subject === a.subject);
+      const facB = training.facilitators.find(f => f.name === b.name && f.subject === b.subject);
       const orderA = facA?.order || 0;
       const orderB = facB?.order || 0;
+      
       return orderA - orderB;
   });
+
+  // --- DATA PROCESSING END ---
+
+  function calculateOverall(items: Response[], qs: Question[]) {
+      // Star Calculation
+      const starQs = qs.filter(q => q.type === 'star');
+      let starAvg = 0;
+      if (starQs.length > 0) {
+          let totalScore = 0;
+          let totalCount = 0;
+          starQs.forEach(q => {
+             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
+             if(valid.length) {
+                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
+                 totalCount += valid.length;
+             }
+          });
+          starAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+      }
+
+      // Slider Calculation
+      const sliderQs = qs.filter(q => q.type === 'slider');
+      let sliderAvg = 0;
+      if (sliderQs.length > 0) {
+          let totalScore = 0;
+          let totalCount = 0;
+          sliderQs.forEach(q => {
+             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
+             if(valid.length) {
+                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
+                 totalCount += valid.length;
+             }
+          });
+          sliderAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+      }
+
+      return { starAvg, sliderAvg, hasStar: starQs.length > 0, hasSlider: sliderQs.length > 0 };
+  }
 
   const getAverage = (responses: Response[], qId: string) => {
     const valid = responses.filter(r => typeof r.answers[qId] === 'number');
@@ -119,76 +195,35 @@ export const ResultsView: React.FC = () => {
       }
   }
 
-  // Helper: Calculate Overall Averages
-  const calculateOverall = (items: Response[], qs: Question[]) => {
-      // Star Calculation
-      const starQs = qs.filter(q => q.type === 'star');
-      let starAvg = 0;
-      if (starQs.length > 0) {
-          let totalScore = 0;
-          let totalCount = 0;
-          starQs.forEach(q => {
-             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
-             if(valid.length) {
-                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
-                 totalCount += valid.length;
-             }
-          });
-          starAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
-      }
-
-      // Slider Calculation
-      const sliderQs = qs.filter(q => q.type === 'slider');
-      let sliderAvg = 0;
-      if (sliderQs.length > 0) {
-          let totalScore = 0;
-          let totalCount = 0;
-          sliderQs.forEach(q => {
-             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
-             if(valid.length) {
-                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
-                 totalCount += valid.length;
-             }
-          });
-          sliderAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
-      }
-
-      return { starAvg, sliderAvg, hasStar: starQs.length > 0, hasSlider: sliderQs.length > 0 };
-  };
-
   // --- NEW: Calculate Grand Average for Facilitators ---
   let grandAvg = 0;
   let grandAvgLabel = '';
   let grandAvgColor = '';
 
-  if (activeTab === 'facilitator' && Object.keys(groupedData).length > 0) {
+  if (activeTab === 'facilitator' && flatSessions.length > 0) {
       let totalSessionAvg = 0;
       let sessionCount = 0;
 
-      Object.keys(groupedData).forEach(name => {
-          Object.keys(groupedData[name]).forEach(subject => {
-              const items = groupedData[name][subject];
-              
-              let sessionTotalScore = 0;
-              let sessionMetricCount = 0;
+      flatSessions.forEach(session => {
+          let sessionTotalScore = 0;
+          let sessionMetricCount = 0;
 
-              questions.forEach(q => {
-                  if (q.type !== 'text') {
-                      const valid = items.filter(r => typeof r.answers[q.id] === 'number');
-                      if (valid.length > 0) {
-                          const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
-                          const avg = sum / valid.length;
-                          sessionTotalScore += avg;
-                          sessionMetricCount++;
-                      }
+          questions.forEach(q => {
+              if (q.type !== 'text') {
+                  const valid = session.items.filter(r => typeof r.answers[q.id] === 'number');
+                  if (valid.length > 0) {
+                      const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
+                      const avg = sum / valid.length;
+                      sessionTotalScore += avg;
+                      sessionMetricCount++;
                   }
-              });
-
-              if (sessionMetricCount > 0) {
-                  totalSessionAvg += (sessionTotalScore / sessionMetricCount);
-                  sessionCount++;
               }
           });
+
+          if (sessionMetricCount > 0) {
+              totalSessionAvg += (sessionTotalScore / sessionMetricCount);
+              sessionCount++;
+          }
       });
 
       if (sessionCount > 0) {
@@ -219,6 +254,7 @@ export const ResultsView: React.FC = () => {
               await deleteFacilitatorResponses(trainingId, targetToDelete);
               
               // Remove locally to update UI instantly
+              // Note: This removes ALL sessions for that facilitator name
               const updatedResponses = responses.filter(r => 
                   !(r.type === 'facilitator' && r.targetName === targetToDelete)
               );
@@ -299,7 +335,7 @@ export const ResultsView: React.FC = () => {
             </div>
         )}
 
-        {sortedNames.length === 0 ? (
+        {flatSessions.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-dashed border-slate-300">
                 <div className="bg-slate-50 p-4 rounded-full mb-3 text-slate-400">
                     <Layout size={32} />
@@ -309,116 +345,108 @@ export const ResultsView: React.FC = () => {
              </div>
         ) : (
             <div className="space-y-6">
-                {sortedNames.map((name) => {
-                    const sessions = groupedData[name];
-                    // We render one Card per Name
+                {flatSessions.map((session, idx) => {
+                    // Render specific session block
+                    const dateStr = session.date ? formatDateID(session.date) : '';
+                    
                     return (
-                        <div key={name} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                             {/* Card Header (Name) */}
+                        <div key={`${session.name}-${session.subject}-${idx}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                             {/* Card Header (Name & Subject & Date) */}
                              <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <div className={`p-1.5 rounded-lg ${activeTab === 'facilitator' ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
                                         {activeTab === 'facilitator' ? <User size={18}/> : <Layout size={18}/>}
                                     </div>
                                     <div className="flex flex-col">
-                                        <h3 className="font-bold text-slate-800 text-base">{activeTab === 'process' ? 'Hasil Evaluasi Penyelenggaraan' : name}</h3>
-                                        {/* Display Organizer for Process */}
-                                        {activeTab === 'process' && training.processOrganizer && (
-                                            <span className="text-[10px] text-slate-500 font-medium flex items-center gap-1">
-                                                <UserCheck size={10}/> Penanggung Jawab: {training.processOrganizer.name}
-                                            </span>
-                                        )}
+                                        <h3 className="font-bold text-slate-800 text-base">
+                                            {activeTab === 'process' ? 'Hasil Evaluasi Penyelenggaraan' : session.name}
+                                        </h3>
+                                        <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+                                            {activeTab === 'facilitator' && (
+                                                <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                                                    {session.subject}
+                                                </span>
+                                            )}
+                                            {dateStr && <span className="flex items-center gap-1"><Calendar size={12}/> {dateStr}</span>}
+                                            
+                                            {activeTab === 'process' && training.processOrganizer && (
+                                                <span className="flex items-center gap-1"><UserCheck size={12}/> {training.processOrganizer.name}</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                                 
                                 {activeTab === 'facilitator' && (
                                     <button 
-                                        onClick={() => handleInitiateDelete(name)}
+                                        onClick={() => handleInitiateDelete(session.name)}
                                         className="p-1.5 text-slate-400 hover:text-red-500 bg-white border border-slate-200 hover:bg-red-50 rounded transition-colors"
-                                        title="Hapus Nilai Fasilitator Ini"
+                                        title="Hapus Nilai Fasilitator Ini (Semua Sesi)"
                                     >
                                         <Trash2 size={16}/>
                                     </button>
                                 )}
                              </div>
 
-                             {/* Render Sessions (Subjects) */}
-                             <div className="divide-y divide-slate-100">
-                                {Object.keys(sessions).map((subject, idx) => {
-                                    const items = sessions[subject];
-                                    const overall = calculateOverall(items, questions);
-                                    
-                                    // Find Session Date
-                                    const facData = activeTab === 'facilitator' ? training.facilitators.find(f => f.name === name && f.subject === subject) : null;
-                                    const dateStr = facData ? formatDateID(facData.sessionDate) : '';
-
-                                    return (
-                                        <div key={idx} className="p-4">
-                                            {/* Sub-Header: Subject & Overall */}
-                                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">
-                                                <div>
-                                                    <h4 className="font-bold text-slate-700 text-sm">{activeTab === 'process' ? 'Rekapitulasi Respon' : subject}</h4>
-                                                    {dateStr && <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5"><Calendar size={10}/> {dateStr}</p>}
+                             {/* Session Details */}
+                             <div className="p-4">
+                                {/* Sub-Header Stats */}
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3 border-b border-slate-50 pb-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="flex gap-2">
+                                            {session.overall.hasStar && (
+                                                <div className="px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-1.5">
+                                                    <span className="text-[9px] uppercase font-bold text-yellow-600 tracking-wider">BINTANG</span>
+                                                    <span className="text-xs font-bold text-slate-800">{session.overall.starAvg}</span>
                                                 </div>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="flex gap-2">
-                                                        {overall.hasStar && (
-                                                            <div className="px-2 py-0.5 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-1.5">
-                                                                <span className="text-[9px] uppercase font-bold text-yellow-600 tracking-wider">BINTANG</span>
-                                                                <span className="text-xs font-bold text-slate-800">{overall.starAvg}</span>
-                                                            </div>
-                                                        )}
-                                                        {overall.hasSlider && (
-                                                            <div className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-1.5">
-                                                                <span className="text-[9px] uppercase font-bold text-blue-600 tracking-wider">SKALA</span>
-                                                                <span className="text-xs font-bold text-slate-800">{overall.sliderAvg}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <span className="px-2 py-0.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500">
-                                                        {items.length} Resp
-                                                    </span>
+                                            )}
+                                            {session.overall.hasSlider && (
+                                                <div className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-1.5">
+                                                    <span className="text-[9px] uppercase font-bold text-blue-600 tracking-wider">SKALA</span>
+                                                    <span className="text-xs font-bold text-slate-800">{session.overall.sliderAvg}</span>
                                                 </div>
-                                            </div>
+                                            )}
+                                        </div>
+                                        <span className="px-2 py-0.5 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500">
+                                            {session.items.length} Responden
+                                        </span>
+                                    </div>
+                                </div>
 
-                                            {/* Grid of Scores */}
-                                            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                                {questions.map(q => {
-                                                    const avg = getAverage(items, q.id);
-                                                    const label = getLabel(avg, q.type);
-                                                    const labelColor = getLabelColor(avg, q.type);
-                                                    
-                                                    return (
-                                                    <div key={q.id} className="bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm flex flex-col h-full">
-                                                        <p className="text-[11px] font-bold text-slate-700 mb-1.5 line-clamp-2 h-[28px] leading-snug" title={q.label}>{q.label}</p>
-                                                        
-                                                        <div className="mt-auto">
-                                                            {q.type === 'text' ? (
-                                                                <div className="bg-slate-50 rounded-lg p-2 max-h-32 overflow-y-auto space-y-2 custom-scrollbar border border-slate-100">
-                                                                    {getTextAnswers(items, q.id).length > 0 ? (
-                                                                        getTextAnswers(items, q.id).map((ans, idx) => (
-                                                                            <div key={idx} className="flex gap-1.5 text-[10px] text-slate-600 leading-relaxed border-b border-slate-100 last:border-0 pb-1 last:pb-0">
-                                                                                <Quote size={10} className="text-slate-400 min-w-[10px] mt-0.5" />
-                                                                                <p className="italic">{ans}</p>
-                                                                            </div>
-                                                                        ))
-                                                                    ) : ( <span className="text-[10px] text-slate-400">Tidak ada jawaban</span> )}
+                                {/* Grid of Scores */}
+                                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                    {questions.map(q => {
+                                        const avg = getAverage(session.items, q.id);
+                                        const label = getLabel(avg, q.type);
+                                        const labelColor = getLabelColor(avg, q.type);
+                                        
+                                        return (
+                                        <div key={q.id} className="bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm flex flex-col h-full">
+                                            <p className="text-[11px] font-bold text-slate-700 mb-1.5 line-clamp-2 h-[28px] leading-snug" title={q.label}>{q.label}</p>
+                                            
+                                            <div className="mt-auto">
+                                                {q.type === 'text' ? (
+                                                    <div className="bg-slate-50 rounded-lg p-2 max-h-32 overflow-y-auto space-y-2 custom-scrollbar border border-slate-100">
+                                                        {getTextAnswers(session.items, q.id).length > 0 ? (
+                                                            getTextAnswers(session.items, q.id).map((ans, idx) => (
+                                                                <div key={idx} className="flex gap-1.5 text-[10px] text-slate-600 leading-relaxed border-b border-slate-100 last:border-0 pb-1 last:pb-0">
+                                                                    <Quote size={10} className="text-slate-400 min-w-[10px] mt-0.5" />
+                                                                    <p className="italic">{ans}</p>
                                                                 </div>
-                                                            ) : (
-                                                                <div className="flex items-center justify-between pt-1">
-                                                                    <span className="text-lg font-bold text-slate-800 tracking-tight">{avg}</span>
-                                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wide ${labelColor}`}>
-                                                                        {label}
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                            ))
+                                                        ) : ( <span className="text-[10px] text-slate-400">Tidak ada jawaban</span> )}
                                                     </div>
-                                                )})}
+                                                ) : (
+                                                    <div className="flex items-center justify-between pt-1">
+                                                        <span className="text-lg font-bold text-slate-800 tracking-tight">{avg}</span>
+                                                        <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wide ${labelColor}`}>
+                                                            {label}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
-                                    );
-                                })}
+                                    )})}
+                                </div>
                              </div>
                         </div>
                     );
