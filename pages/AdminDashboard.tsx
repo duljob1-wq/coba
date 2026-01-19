@@ -4,7 +4,7 @@ import { getTrainings, deleteTraining, getResponses, getGlobalQuestions, saveGlo
 import { exportToPDF, exportToExcel, exportToWord } from '../services/exportService';
 import { Training, GlobalQuestion, QuestionType, Contact, AppSettings, TrainingTheme, Question, GuestEntry } from '../types';
 import * as XLSX from 'xlsx';
-import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key } from 'lucide-react';
+import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import LZString from 'lz-string';
@@ -216,6 +216,13 @@ export const AdminDashboard: React.FC = () => {
       refreshData();
   };
 
+  const handleDeleteContact = async (c: Contact) => {
+      if (confirm(`Apakah Anda yakin ingin menghapus kontak "${c.name}"?`)) {
+          await deleteContact(c.id);
+          refreshData();
+      }
+  };
+
   const handleExportContacts = () => {
       const dataToExport = contacts.map(c => ({
           'Nama': c.name,
@@ -327,19 +334,13 @@ export const AdminDashboard: React.FC = () => {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const openShareModal = (training: Training) => {
-    // GENERATE DIRECT SHORT LINK (FIREBASE MODE)
-    // Format: https://domain.com/#/evaluate/UUID
-    
     const origin = window.location.origin;
-    // Handle trailing slash just in case, though origin usually doesn't have it
     const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin;
-    
-    // Construct the clean URL
     const cleanUrl = `${baseUrl}/#/evaluate/${training.id}`;
 
     setShareData({ 
         shortUrl: cleanUrl, 
-        fullUrl: cleanUrl, // Full url is same as short url in Firebase mode
+        fullUrl: cleanUrl, 
         title: training.title, 
         accessCode: training.accessCode || 'N/A' 
     });
@@ -365,9 +366,27 @@ export const AdminDashboard: React.FC = () => {
     }
   };
 
+  // --- CONTACTS HELPERS ---
+  const getCountryCode = (num: string) => {
+      if (num.startsWith('+60')) return 'mys';
+      if (num.startsWith('+65')) return 'sgp';
+      if (num.startsWith('+1')) return 'usa';
+      if (num.startsWith('+61')) return 'aus';
+      if (num.startsWith('+81')) return 'jpn';
+      if (num.startsWith('+44')) return 'gbr';
+      if (num.startsWith('+966')) return 'sau';
+      return 'idn';
+  };
+
+  const countryLabel = getCountryCode(newContact.whatsapp);
+  
+  const isDuplicateName = newContact.name.length > 2 && contacts.some(c => c.name.toLowerCase().includes(newContact.name.toLowerCase()));
+  const isDuplicatePhone = newContact.whatsapp.length > 4 && contacts.some(c => c.whatsapp.replace(/[^0-9]/g, '') === newContact.whatsapp.replace(/[^0-9]/g, ''));
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
       <nav className="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+          {/* ... Navbar content same as before ... */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                   <div className="flex items-center gap-3">
@@ -389,7 +408,6 @@ export const AdminDashboard: React.FC = () => {
                           </button>
                       ))}
                       
-                      {/* SUPERADMIN MENU ONLY */}
                       {isSuperAdmin && (
                           <button onClick={() => setActiveTab('security')} className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium whitespace-nowrap ${activeTab === 'security' ? 'bg-amber-600 text-white' : 'text-amber-300 hover:bg-slate-800 border border-amber-900/30'}`}>
                               <Shield size={18}/>
@@ -407,7 +425,6 @@ export const AdminDashboard: React.FC = () => {
       </nav>
 
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8">
-        {/* ... (Management, Variables, Contacts, Reports, Guestbook tabs remain the same) ... */}
         {activeTab === 'management' && (
             <div className="animate-in fade-in duration-300">
                 {/* ... (Management Tab Content - unchanged) ... */}
@@ -472,7 +489,7 @@ export const AdminDashboard: React.FC = () => {
             </div>
         )}
 
-        {/* ... (Other Tabs omitted for brevity as they are unchanged) ... */}
+        {/* ... Other tabs ... */}
         {activeTab === 'variables' && (
             <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
                  {/* ... Variables Content ... */}
@@ -695,7 +712,6 @@ export const AdminDashboard: React.FC = () => {
         
         {activeTab === 'contacts' && (
              <div className="animate-in fade-in duration-300 max-w-4xl mx-auto">
-                {/* ... (Contacts Content Unchanged) ... */}
                 <div className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800">Kontak Fasilitator</h2>
@@ -711,22 +727,66 @@ export const AdminDashboard: React.FC = () => {
                         <input type="file" ref={contactFileInputRef} onChange={handleImportContacts} className="hidden" accept=".xlsx, .xls" />
                     </div>
                 </div>
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid md:grid-cols-3 gap-4 items-end">
+                
+                {/* Form Input Kontak */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 grid md:grid-cols-3 gap-4 items-start">
                     <div>
-                        <label className="text-xs font-semibold text-slate-500 mb-1 block">Nama Lengkap</label>
-                        <input type="text" value={newContact.name} onChange={e => setNewContact({...newContact, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        <label className="text-xs font-semibold text-slate-500 mb-1 block">Nama Lengkap+gelar</label>
+                        <input 
+                            type="text" 
+                            value={newContact.name} 
+                            onChange={e => setNewContact({...newContact, name: e.target.value})} 
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
+                        {isDuplicateName && <p className="text-[10px] text-red-500 font-bold mt-1 animate-pulse">Nama sudah ada</p>}
                     </div>
+                    
                     <div>
-                        <label className="text-xs font-semibold text-slate-500 mb-1 block">WhatsApp (628...)</label>
-                        <input type="text" value={newContact.whatsapp} onChange={e => setNewContact({...newContact, whatsapp: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+                        <label className="text-xs font-semibold text-slate-500 mb-1 block">WhatsApp ({countryLabel})</label>
+                        <div className="relative flex">
+                            {/* Dropdown Kode Negara */}
+                            <select 
+                                onChange={(e) => setNewContact({...newContact, whatsapp: e.target.value + newContact.whatsapp.replace(/^\+\d+/, '')})}
+                                className="w-12 bg-slate-50 border border-r-0 border-slate-300 rounded-l-lg text-xs font-bold text-slate-600 focus:outline-none cursor-pointer"
+                                title="Pilih Kode Negara"
+                            >
+                                <option value="">ID</option>
+                                <option value="+62">🇮🇩</option>
+                                <option value="+60">🇲🇾</option>
+                                <option value="+65">🇸🇬</option>
+                                <option value="+1">🇺🇸</option>
+                                <option value="+61">🇦🇺</option>
+                                <option value="+81">🇯🇵</option>
+                                <option value="+44">🇬🇧</option>
+                                <option value="+966">🇸🇦</option>
+                            </select>
+                            
+                            <input 
+                                type="text" 
+                                value={newContact.whatsapp} 
+                                onChange={e => setNewContact({...newContact, whatsapp: e.target.value})} 
+                                className="w-full border border-slate-300 rounded-r-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="085... atau +62..."
+                            />
+                        </div>
+                        {isDuplicatePhone && <p className="text-[10px] text-red-500 font-bold mt-1 animate-pulse">Nomor sudah ada</p>}
                     </div>
-                    <button onClick={handleSaveContact} className="bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">Simpan Kontak</button>
+                    
+                    <button 
+                        onClick={handleSaveContact} 
+                        disabled={!newContact.name || isDuplicateName || isDuplicatePhone}
+                        className="bg-indigo-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition mt-6 md:mt-[22px] disabled:bg-slate-300 disabled:cursor-not-allowed"
+                    >
+                        Simpan Kontak
+                    </button>
                 </div>
+
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex items-center gap-3">
                     <Search className="text-slate-400" size={20} />
                     <input type="text" placeholder="Cari nama atau nomor WhatsApp..." className="flex-1 outline-none text-sm text-slate-700 placeholder:text-slate-400" value={contactSearch} onChange={(e) => setContactSearch(e.target.value)} />
                     {contactSearch && <button onClick={() => setContactSearch('')} className="p-1 text-slate-400 hover:text-slate-600"><X size={16}/></button>}
                 </div>
+                
                 <div className="grid sm:grid-cols-2 gap-4">
                     {filteredContacts.length > 0 ? (
                         filteredContacts.map(c => (
@@ -735,7 +795,7 @@ export const AdminDashboard: React.FC = () => {
                                     <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold text-sm uppercase">{c.name.charAt(0)}</div>
                                     <div><p className="font-bold text-slate-800 text-sm">{c.name}</p><p className="text-xs text-slate-500 font-mono"><Phone size={10} className="inline mr-1"/> {c.whatsapp}</p></div>
                                 </div>
-                                <button onClick={async () => { await deleteContact(c.id); refreshData(); }} className="text-slate-300 hover:text-red-500 p-2 transition"><Trash2 size={18}/></button>
+                                <button onClick={() => handleDeleteContact(c)} className="text-slate-300 hover:text-red-500 p-2 transition"><Trash2 size={18}/></button>
                             </div>
                         ))
                     ) : (
