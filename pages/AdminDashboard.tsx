@@ -28,6 +28,7 @@ export const AdminDashboard: React.FC = () => {
   // Delete Confirmation State
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteAuthInput, setDeleteAuthInput] = useState(''); // New State for Delete Password
 
   // Variables & Themes State
   const [globalQuestions, setGlobalQuestions] = useState<GlobalQuestion[]>([]);
@@ -119,12 +120,21 @@ export const AdminDashboard: React.FC = () => {
 
   const executeDelete = async () => {
     if (!deleteTargetId) return;
+    
+    // PASSWORD CHECK
+    const requiredPass = appSettings.deletePassword || 'adm123';
+    if (deleteAuthInput !== requiredPass) {
+        alert("Kode otorisasi (Sandi) salah!");
+        return;
+    }
+
     setIsDeleting(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 300));
       await deleteTraining(deleteTargetId);
       await refreshData();
       setDeleteTargetId(null);
+      setDeleteAuthInput(''); // Reset password input
     } catch (err) {
       alert('Gagal menghapus data.');
     } finally {
@@ -441,7 +451,7 @@ export const AdminDashboard: React.FC = () => {
                                 <span className="text-indigo-600 font-mono font-bold text-sm">{t.accessCode}</span>
                             </div>
                             <div className="p-6 pt-10 flex-1">
-                                <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2">{t.title}</h3>
+                                <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2" title={t.title}>{t.title}</h3>
                                 <div className="space-y-2 mt-4 text-sm text-slate-500">
                                     <div className="flex items-center gap-2"><Calendar size={14} /> <span>{new Date(t.startDate).toLocaleDateString('id-ID')}</span></div>
                                     <div className="flex items-center gap-2"><Users size={14} /> <span>{t.facilitators.length} Fasilitator</span></div>
@@ -453,7 +463,7 @@ export const AdminDashboard: React.FC = () => {
                                     <Link to={`/admin/results/${t.id}`} className="p-2 text-slate-400 hover:text-indigo-600 transition"><Eye size={18}/></Link>
                                     <button onClick={() => handleCopyTraining(t)} className="p-2 text-slate-400 hover:text-blue-600 transition"><CopyIcon size={18}/></button>
                                     <Link to={`/admin/edit/${t.id}`} className="p-2 text-slate-400 hover:text-amber-600 transition"><Pencil size={18}/></Link>
-                                    <button onClick={() => setDeleteTargetId(t.id)} className="p-2 text-slate-400 hover:text-red-600 transition"><Trash2 size={18}/></button>
+                                    <button onClick={() => { setDeleteTargetId(t.id); setDeleteAuthInput(''); }} className="p-2 text-slate-400 hover:text-red-600 transition"><Trash2 size={18}/></button>
                                 </div>
                             </div>
                         </div>
@@ -898,15 +908,30 @@ export const AdminDashboard: React.FC = () => {
 
       {/* Delete Confirmation Modal */}
       {deleteTargetId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95">
+           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
              <div className="p-6 text-center">
                 <AlertCircle size={48} className="mx-auto text-red-500 mb-4" />
                 <h3 className="text-xl font-bold text-slate-800 mb-2">Konfirmasi Hapus</h3>
-                <p className="text-slate-500 text-sm mb-6">Hapus data pelatihan ini secara permanen?</p>
+                <p className="text-slate-500 text-sm mb-4">Hapus data pelatihan ini secara permanen?</p>
+                
+                <div className="mb-4 text-left">
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Kode Otorisasi</label>
+                    <div className="relative">
+                        <input 
+                            type="password" 
+                            value={deleteAuthInput} 
+                            onChange={e => setDeleteAuthInput(e.target.value)} 
+                            placeholder="Masukkan sandi..."
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:outline-none"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
                 <div className="flex gap-3">
-                   <button onClick={() => setDeleteTargetId(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-semibold">Batal</button>
-                   <button onClick={executeDelete} disabled={isDeleting} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2">{isDeleting ? <RotateCcw size={18} className="animate-spin" /> : 'Hapus'}</button>
+                   <button onClick={() => { setDeleteTargetId(null); setDeleteAuthInput(''); }} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-semibold hover:bg-slate-200">Batal</button>
+                   <button onClick={executeDelete} disabled={isDeleting} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-red-700 disabled:opacity-50">{isDeleting ? <RotateCcw size={18} className="animate-spin" /> : 'Hapus'}</button>
                 </div>
              </div>
            </div>
