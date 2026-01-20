@@ -1,15 +1,24 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { getTrainingById, saveResponse, saveTraining, getRespondentHistory, saveRespondentHistory, checkParticipantLimitReached } from '../services/storageService';
 import { checkAndSendAutoReport } from '../services/whatsappService';
-import { Training, Response } from '../types';
+import { Training, Response, Facilitator } from '../types';
 import { StarRating } from '../components/StarRating';
 import { SliderRating } from '../components/SliderRating';
 import { v4 as uuidv4 } from 'uuid';
-import { CheckCircle, AlertOctagon, User, Layout, ChevronRight, Home, ArrowLeft, Lock, Calendar, CheckSquare, ShieldCheck, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertOctagon, User, Layout, ChevronRight, Home, ArrowLeft, Lock, Calendar, CheckSquare, ShieldCheck, Clock, AlertCircle, Users } from 'lucide-react';
 
 type Tab = 'facilitator' | 'process';
+
+// Interface for grouped display
+interface FacilitatorGroup {
+    key: string;
+    subject: string;
+    label: string; // Display name
+    facilitators: Facilitator[]; // Array of actual facilitator objects
+    isTeam: boolean;
+}
 
 export const RespondentView: React.FC = () => {
   const { trainingId } = useParams<{ trainingId: string }>();
@@ -28,7 +37,10 @@ export const RespondentView: React.FC = () => {
 
   // Form State
   const [facilitatorMode, setFacilitatorMode] = useState<'select' | 'custom'>('select');
-  const [selectedFacilitatorId, setSelectedFacilitatorId] = useState('');
+  
+  // CHANGED: selectedFacilitatorId -> selectedGroupKey to handle teams
+  const [selectedGroupKey, setSelectedGroupKey] = useState(''); 
+  
   const [customFacName, setCustomFacName] = useState('');
   const [customFacSubject, setCustomFacSubject] = useState('');
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
@@ -104,6 +116,7 @@ export const RespondentView: React.FC = () => {
     setAnswers({});
     setValidationError(null);
     setSubmitted(false);
+    setSelectedGroupKey(''); // Reset selection
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
     // Refresh history
@@ -112,126 +125,188 @@ export const RespondentView: React.FC = () => {
     }
   };
 
+  // --- LOGIC: Grouping Facilitators (Team Feature) ---
+  const availableGroups = useMemo<FacilitatorGroup[]>(() => {
+      if (!training) return [];
+
+      const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
+
+      // 1. Filter Individual Facilitators first based on availability logic
+      const availableIndividuals = training.facilitators.filter(f => {
+          if (isAdminMode) return true; // Bypass all checks
+
+          // History Check: Only show if NOT submitted yet
+          if (submittedFacilitatorIds.includes(f.id)) return false;
+
+          // Manual Override
+          if (f.isOpen === false) return false;
+          if (f.isOpen === true) return true;
+
+          // Date Check
+          if (f.sessionDate !== todayStr) return false;
+
+          // Time Check
+          if (f.sessionStartTime) {
+              const [hours, minutes] = f.sessionStartTime.split(':').map(Number);
+              const startDateTime = new Date();
+              startDateTime.setHours(hours, minutes, 0, 0);
+              if (today < startDateTime) return false;
+          }
+
+          return true;
+      });
+
+      // 2. Group them by Subject + Date + Time
+      const groups: Record<string, Facilitator[]> = {};
+      
+      availableIndividuals.forEach(f => {
+          // Key defines the "Team" boundary
+          const key = `${f.subject.trim()}_${f.sessionDate}_${f.sessionStartTime || 'any'}`;
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(f);
+      });
+
+      // 3. Convert to Display Array
+      return Object.entries(groups).map(([key, facilitators]) => {
+          const isTeam = facilitators.length > 1;
+          const subject = facilitators[0].subject;
+          
+          let label = '';
+          if (isTeam) {
+              // TEAM FORMAT: "Materi X (Tim Fasilitator N Orang)"
+              label = `${subject} (Tim Fasilitator ${facilitators.length} Orang)`;
+          } else {
+              // INDIVIDUAL FORMAT: "Nama - Materi"
+              label = `${facilitators[0].name} - ${subject}`;
+          }
+
+          return {
+              key,
+              subject,
+              label,
+              facilitators,
+              isTeam
+          };
+      }).sort((a, b) => a.label.localeCompare(b.label)); // Sort alphabetically
+
+  }, [training, submittedFacilitatorIds, isAdminMode]);
+
+  const allFacilitatorsDone = training && training.facilitators.length > 0 && availableGroups.length === 0 && submittedFacilitatorIds.length > 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!training) return;
     setValidationError(null);
 
-    let targetName = '';
-    let targetSubject = '';
-    let facId = '';
-
     // 1. VALIDATE CONTEXT (Facilitator Selection)
     if (activeTab === 'facilitator') {
       if (facilitatorMode === 'select') {
-        const fac = training.facilitators.find(f => f.id === selectedFacilitatorId);
-        if (!fac) {
-            alert('Mohon pilih fasilitator terlebih dahulu.');
+        if (!selectedGroupKey) {
+            alert('Mohon pilih materi / fasilitator terlebih dahulu.');
             return;
         }
-        // Double check against history just in case (Ignore if Admin Mode)
-        if (!isAdminMode && submittedFacilitatorIds.includes(fac.id)) {
-            alert('Anda sudah menilai fasilitator ini sebelumnya.');
-            return;
-        }
-
-        targetName = fac.name;
-        targetSubject = fac.subject;
-        facId = fac.id;
       } else {
         if (!customFacName || !customFacSubject) {
             alert('Mohon lengkapi nama dan materi fasilitator.');
             return;
         }
-        targetName = customFacName;
-        targetSubject = customFacSubject;
       }
-    } else {
-      targetName = "Proses Penyelenggaraan";
     }
 
-    // 2. VALIDATE ANSWERS (Strict: All Must be Filled/Touched)
+    // 2. VALIDATE ANSWERS (Strict)
     const questionsToCheck = activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
     const missingFields = questionsToCheck.filter(q => {
         const val = answers[q.id];
-        
-        // Text: Must be non-empty string
-        if (q.type === 'text') {
-            return !val || String(val).trim() === '';
-        }
-        
-        // Slider: Must be defined (user must interact with it)
-        // If val is undefined, it means user didn't touch it (even if UI shows 45 default)
-        if (q.type === 'slider') {
-            return val === undefined || val === null;
-        }
-        
-        // Star: Must be > 0
+        if (q.type === 'text') return !val || String(val).trim() === '';
+        if (q.type === 'slider') return val === undefined || val === null;
         return !val || val === 0;
     });
 
     if (missingFields.length > 0) {
-        // Build detailed error message
         const errorList = missingFields.map(q => {
-             // Calculate real index (1-based) from the original list
              const index = questionsToCheck.findIndex(item => item.id === q.id) + 1;
-             
              let reason = "belum diisi";
-             if (q.type === 'slider') reason = "belum digeser (wajib ubah dari posisi awal)";
+             if (q.type === 'slider') reason = "belum digeser";
              if (q.type === 'star') reason = "belum diberi bintang";
-             if (q.type === 'text') reason = "saran/komentar belum ditulis";
-
+             if (q.type === 'text') reason = "saran belum ditulis";
              return `• Pertanyaan ${index} (${q.label}) : ${reason}`;
         }).join('\n');
-
         setValidationError(`Mohon lengkapi bagian berikut sebelum mengirim:\n${errorList}`);
         return;
     }
 
-    // 3. CHECK LIMIT & SAVE
-    // Logic: If Admin, always save. If Limit Reached, DO NOT SAVE but behave as if successful.
+    // 3. PROCESS SUBMISSION (LOOP FOR TEAMS)
     
-    let shouldSave = true;
+    // Determine Targets (Array of Facilitators to save)
+    let targetsToSave: { name: string; subject: string; id: string }[] = [];
 
-    if (!isAdminMode && training.participantLimit && training.participantLimit > 0) {
-        const isLimitReached = await checkParticipantLimitReached(
-            training.id,
-            training.participantLimit,
-            activeTab,
-            activeTab === 'facilitator' ? targetName : undefined,
-            activeTab === 'facilitator' ? targetSubject : undefined
-        );
-
-        if (isLimitReached) {
-            shouldSave = false;
-            console.log('Participant limit reached. Response will not be saved to DB.');
+    if (activeTab === 'facilitator') {
+        if (facilitatorMode === 'select') {
+            const group = availableGroups.find(g => g.key === selectedGroupKey);
+            if (group) {
+                // Add EVERY facilitator in the group to the save list
+                targetsToSave = group.facilitators.map(f => ({
+                    name: f.name,
+                    subject: f.subject,
+                    id: f.id
+                }));
+            }
+        } else {
+            // Custom Manual Input (Single)
+            targetsToSave = [{ name: customFacName, subject: customFacSubject, id: uuidv4() }];
         }
+    } else {
+        // Process Eval (Single)
+        targetsToSave = [{ name: "Proses Penyelenggaraan", subject: "Umum", id: "process" }];
     }
 
-    if (shouldSave) {
-        const response: Response = {
-          id: uuidv4(),
-          trainingId: training.id,
-          type: activeTab,
-          targetName,
-          targetSubject: activeTab === 'facilitator' ? targetSubject : undefined,
-          answers,
-          timestamp: Date.now()
-        };
+    // Loop through targets and save
+    let isSaveSuccess = true;
 
-        saveResponse(response);
-        
-        // Automation only triggers if data is actually saved
-        if (activeTab === 'facilitator' && facId) {
-            checkAndSendAutoReport(training.id, facId, targetName, 'facilitator').catch(console.error);
-        } else if (activeTab === 'process') {
-            checkAndSendAutoReport(training.id, '', '', 'process').catch(console.error);
+    for (const target of targetsToSave) {
+        let shouldSave = true;
+
+        // Limit Check (Only relevant for real DB save, not admin mode)
+        if (!isAdminMode && training.participantLimit && training.participantLimit > 0) {
+            const isLimitReached = await checkParticipantLimitReached(
+                training.id,
+                training.participantLimit,
+                activeTab,
+                activeTab === 'facilitator' ? target.name : undefined,
+                activeTab === 'facilitator' ? target.subject : undefined
+            );
+            if (isLimitReached) {
+                shouldSave = false;
+                console.log(`Limit reached for ${target.name}. Skipping DB save.`);
+            }
         }
-    }
 
-    // Always update local history (User experience: "I have done this")
-    if (activeTab === 'facilitator' && facId) {
-        saveRespondentHistory(training.id, facId);
+        if (shouldSave) {
+            const response: Response = {
+              id: uuidv4(),
+              trainingId: training.id,
+              type: activeTab,
+              targetName: target.name,
+              targetSubject: activeTab === 'facilitator' ? target.subject : undefined,
+              answers,
+              timestamp: Date.now()
+            };
+
+            await saveResponse(response);
+            
+            // Automation Logic (Per Individual)
+            if (activeTab === 'facilitator' && facilitatorMode === 'select') {
+                checkAndSendAutoReport(training.id, target.id, target.name, 'facilitator').catch(console.error);
+            } else if (activeTab === 'process') {
+                checkAndSendAutoReport(training.id, '', '', 'process').catch(console.error);
+            }
+        }
+
+        // Update Local History (Always, for UX)
+        if (activeTab === 'facilitator' && facilitatorMode === 'select') {
+            saveRespondentHistory(training.id, target.id);
+        }
     }
     
     setSubmitted(true);
@@ -262,7 +337,9 @@ export const RespondentView: React.FC = () => {
             <CheckCircle className="h-10 w-10 text-green-500" />
           </div>
           <h2 className="text-3xl font-bold text-slate-800 mb-2">Terima Kasih!</h2>
-          <p className="text-slate-500 mb-8 leading-relaxed">Masukan Anda sangat berharga bagi peningkatan kualitas pelatihan kami.</p>
+          <p className="text-slate-500 mb-8 leading-relaxed">
+             Masukan Anda telah tersimpan {activeTab === 'facilitator' && facilitatorMode === 'select' ? 'untuk seluruh fasilitator dalam sesi ini' : ''}.
+          </p>
           
           <div className="space-y-3">
             <button
@@ -285,47 +362,6 @@ export const RespondentView: React.FC = () => {
 
   const questions = activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
   const processUnlocked = isProcessAvailable();
-
-  // Helper Date Today (Local YYYY-MM-DD)
-  const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
-
-  // Filter facilitators logic:
-  // 1. Must match Date (Auto) or be Manually Open (IGNORED IF ADMIN MODE)
-  // 2. Must NOT match Manually Locked (IGNORED IF ADMIN MODE)
-  // 3. Must check Time if exists (IGNORED IF ADMIN MODE)
-  // 4. Must NOT be in submittedFacilitatorIds (History) (IGNORED IF ADMIN MODE)
-  
-  // First, find all technically available based on Admin/Date/Time
-  const technicallyAvailable = training.facilitators.filter(f => {
-      if (isAdminMode) return true; // BYPASS ALL CHECKS
-
-      // Manual Override: If Explicitly Locked/Open, priority #1
-      if (f.isOpen === false) return false; // Manual Lock
-      if (f.isOpen === true) return true;   // Manual Open
-
-      // Auto Logic: Check Date
-      if (f.sessionDate !== todayStr) return false; // Not today
-
-      // Auto Logic: Check Time (if set)
-      if (f.sessionStartTime) {
-          const [hours, minutes] = f.sessionStartTime.split(':').map(Number);
-          const startDateTime = new Date();
-          startDateTime.setHours(hours, minutes, 0, 0);
-
-          if (today < startDateTime) return false; // Too early
-      }
-
-      return true;
-  });
-
-  // Then filter out the ones user already submitted
-  const availableFacilitators = technicallyAvailable.filter(f => {
-      if (isAdminMode) return true; // BYPASS HISTORY CHECK
-      return !submittedFacilitatorIds.includes(f.id);
-  });
-  
-  const allFacilitatorsDone = technicallyAvailable.length > 0 && availableFacilitators.length === 0;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -399,17 +435,17 @@ export const RespondentView: React.FC = () => {
 
                  {facilitatorMode === 'select' ? (
                    <div>
-                     <label className="block text-xs font-bold text-slate-700 mb-1.5">Siapa Fasilitatornya?</label>
+                     <label className="block text-xs font-bold text-slate-700 mb-1.5">Materi / Fasilitator Sesi Ini</label>
                      <div className="relative">
                         <select
-                            value={selectedFacilitatorId}
-                            onChange={(e) => setSelectedFacilitatorId(e.target.value)}
+                            value={selectedGroupKey}
+                            onChange={(e) => setSelectedGroupKey(e.target.value)}
                             className="w-full appearance-none bg-white border border-slate-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-900 shadow-sm disabled:bg-slate-50 disabled:text-slate-400"
-                            disabled={availableFacilitators.length === 0}
+                            disabled={availableGroups.length === 0}
                         >
-                            <option value="">-- Pilih Nama --</option>
-                            {availableFacilitators.map(f => (
-                                <option key={f.id} value={f.id}>{f.name} - {f.subject}</option>
+                            <option value="">-- Pilih Materi / Fasilitator --</option>
+                            {availableGroups.map(g => (
+                                <option key={g.key} value={g.key}>{g.label}</option>
                             ))}
                         </select>
                         <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 rotate-90" size={18}/>
@@ -424,13 +460,16 @@ export const RespondentView: React.FC = () => {
                                  <br/>Silakan cek tab <span className="font-bold">Penyelenggaraan</span> jika belum diisi.
                              </p>
                          </div>
-                     ) : availableFacilitators.length === 0 ? (
+                     ) : availableGroups.length === 0 ? (
                         <div className="mt-2 text-xs text-slate-500 space-y-1">
                             <p className="flex items-center gap-1"><Calendar size={12}/> Fasilitator hanya muncul sesuai jadwal.</p>
                             <p className="flex items-center gap-1 italic opacity-80"><Clock size={12}/> Jika jadwal hari ini, pastikan waktu sesi sudah dimulai.</p>
                         </div>
                      ) : (
-                         <p className="text-[10px] text-slate-400 mt-2 italic">* Fasilitator yang sudah Anda nilai tidak akan muncul dalam daftar ini.</p>
+                         <div className="mt-2 text-[10px] text-slate-400 flex items-center gap-1">
+                             <Users size={12} />
+                             <span>* Pilihan bertanda (Tim) akan menilai seluruh anggota tim sekaligus dengan nilai yang sama.</span>
+                         </div>
                      )}
 
                    </div>
@@ -496,7 +535,7 @@ export const RespondentView: React.FC = () => {
 
             <button
                 type="submit"
-                disabled={activeTab === 'facilitator' && facilitatorMode === 'select' && availableFacilitators.length === 0}
+                disabled={activeTab === 'facilitator' && facilitatorMode === 'select' && availableGroups.length === 0}
                 className="w-full bg-indigo-600 text-white font-bold text-base py-3.5 rounded-xl shadow-lg shadow-indigo-300 hover:bg-indigo-700 hover:shadow-xl transition-all transform active:scale-95 disabled:bg-slate-300 disabled:shadow-none disabled:transform-none disabled:cursor-not-allowed"
             >
                 Kirim Evaluasi

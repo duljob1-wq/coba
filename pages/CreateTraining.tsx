@@ -19,7 +19,7 @@ export const CreateTraining: React.FC = () => {
   const [description, setDescription] = useState(''); 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [participantLimit, setParticipantLimit] = useState(''); // New: Batas Peserta (String to allow empty)
+  const [participantLimit, setParticipantLimit] = useState(''); 
 
   // Extended Info (Optional)
   const [useMethod, setUseMethod] = useState(false);
@@ -37,22 +37,22 @@ export const CreateTraining: React.FC = () => {
   // Facilitators
   const [facilitators, setFacilitators] = useState<Facilitator[]>([]);
   
-  // Form State for Top Input
-  const [facName, setFacName] = useState('');
-  const [facSubject, setFacSubject] = useState('');
+  // --- FORM STATE FOR TOP INPUT (DYNAMIC ARRAYS) ---
+  const [facNames, setFacNames] = useState<string[]>(['']); // Array for names
+  const [facSubjects, setFacSubjects] = useState<string[]>(['']); // Array for subjects
   const [facDate, setFacDate] = useState('');
-  const [facTime, setFacTime] = useState(''); // New State for Time
-  const [showTimeInput, setShowTimeInput] = useState(false); // Toggle visibility for time input
-  const [facWhatsapp, setFacWhatsapp] = useState(''); 
+  const [facTime, setFacTime] = useState(''); 
+  const [showTimeInput, setShowTimeInput] = useState(false); 
   
   // State for Autocomplete Dropdown
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeNameIndex, setActiveNameIndex] = useState<number>(0); // Track which input is active
 
   // State for Editing/Adding within Group Card
-  const [editingFacName, setEditingFacName] = useState<string | null>(null); // Stores the original name being edited
+  const [editingFacName, setEditingFacName] = useState<string | null>(null); 
   const [editNameInput, setEditNameInput] = useState('');
   const [editWaInput, setEditWaInput] = useState('');
-  const [showEditSuggestions, setShowEditSuggestions] = useState(false); // New state for edit dropdown
+  const [showEditSuggestions, setShowEditSuggestions] = useState(false); 
   
   // State for Editing specific Session (Inline)
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -60,17 +60,17 @@ export const CreateTraining: React.FC = () => {
   const [editSessionDate, setEditSessionDate] = useState('');
   const [editSessionTime, setEditSessionTime] = useState('');
 
-  const [addingSessionTo, setAddingSessionTo] = useState<string | null>(null); // Stores name of facilitator getting new session
+  const [addingSessionTo, setAddingSessionTo] = useState<string | null>(null); 
   const [newSessionSubject, setNewSessionSubject] = useState('');
   const [newSessionDate, setNewSessionDate] = useState('');
-  const [newSessionTime, setNewSessionTime] = useState(''); // New State for Session Time
+  const [newSessionTime, setNewSessionTime] = useState(''); 
 
   // Contacts Database (for autocomplete)
   const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
 
   // Themes
   const [availableThemes, setAvailableThemes] = useState<TrainingTheme[]>([]);
-  const [selectedThemeName, setSelectedThemeName] = useState<string>(''); // UI Helper
+  const [selectedThemeName, setSelectedThemeName] = useState<string>(''); 
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
 
   // Evaluation Config
@@ -100,12 +100,9 @@ export const CreateTraining: React.FC = () => {
 
   // Group Facilitators by Name for Display
   const groupedFacilitators = useMemo(() => {
-    // Sort facilitators by order first
     const sorted = [...facilitators].sort((a, b) => (a.order || 0) - (b.order || 0));
-    
     const groups: Record<string, Facilitator[]> = {};
     sorted.forEach(f => {
-        // Use name as key.
         const key = f.name; 
         if (!groups[key]) groups[key] = [];
         groups[key].push(f);
@@ -115,11 +112,14 @@ export const CreateTraining: React.FC = () => {
 
   // Filtered Contacts for Autocomplete (Facilitator Top Input)
   const filteredContacts = useMemo(() => {
-    if (!facName) return [];
+    // Get the name currently being typed based on active index
+    const currentName = facNames[activeNameIndex] || '';
+    if (!currentName) return [];
+    
     return savedContacts.filter(c => 
-        c.name.toLowerCase().includes(facName.toLowerCase())
+        c.name.toLowerCase().includes(currentName.toLowerCase())
     );
-  }, [facName, savedContacts]);
+  }, [facNames, activeNameIndex, savedContacts]);
 
   // Filtered Contacts for Edit Input (Facilitator Group Card)
   const filteredEditContacts = useMemo(() => {
@@ -150,31 +150,21 @@ export const CreateTraining: React.FC = () => {
             setDescription(data.description || ''); 
             setStartDate(data.startDate);
             setEndDate(data.endDate);
-            setParticipantLimit(data.participantLimit ? data.participantLimit.toString() : ''); // Load limit
+            setParticipantLimit(data.participantLimit ? data.participantLimit.toString() : ''); 
             setProcessDate(data.processEvaluationDate || data.endDate); 
             setFacilitators(data.facilitators);
             setFacilitatorQuestions(data.facilitatorQuestions);
             setProcessQuestions(data.processQuestions);
             setTargets(data.targets || []);
             
-            // Load Extra Info
-            if (data.learningMethod) {
-                setUseMethod(true);
-                setLearningMethod(data.learningMethod);
-            }
-            if (data.location) {
-                setUseLocation(true);
-                setLocation(data.location);
-            }
+            if (data.learningMethod) { setUseMethod(true); setLearningMethod(data.learningMethod); }
+            if (data.location) { setUseLocation(true); setLocation(data.location); }
 
-            // Process Automation Data
             if (data.processOrganizer) {
                 setProcessOrganizerName(data.processOrganizer.name);
                 setProcessOrganizerWa(data.processOrganizer.whatsapp);
             }
-            if (data.processTarget) {
-                setProcessTarget(data.processTarget.toString());
-            }
+            if (data.processTarget) setProcessTarget(data.processTarget.toString());
             setCurrentProcessReported(data.processReported || false);
 
             setCurrentId(data.id);
@@ -187,7 +177,6 @@ export const CreateTraining: React.FC = () => {
           const settings = await getSettings();
           setDescription(settings.defaultTrainingDescription || ''); 
           const globals = await getGlobalQuestions();
-          // Default questions if no theme selected
           const facDefaults = globals.filter(q => q.category === 'facilitator' && q.isDefault).map(q => ({ id: uuidv4(), label: q.label, type: q.type }));
           const procDefaults = globals.filter(q => q.category === 'process' && q.isDefault).map(q => ({ id: uuidv4(), label: q.label, type: q.type }));
           setFacilitatorQuestions(facDefaults);
@@ -210,36 +199,109 @@ export const CreateTraining: React.FC = () => {
       setStep(2);
   };
 
-  // ... (Autocomplete and Logic handlers unchanged for brevity) ...
-  const handleFacilitatorInput = (value: string) => { setFacName(value); setShowSuggestions(true); if (!value) setFacWhatsapp(''); };
-  const selectContact = (contact: Contact) => { setFacName(contact.name); setFacWhatsapp(contact.whatsapp); setShowSuggestions(false); };
+  // --- HANDLERS FOR DYNAMIC INPUTS ---
+
+  // Handle Name Input Change
+  const handleFacNameChange = (index: number, value: string) => {
+      const newNames = [...facNames];
+      newNames[index] = value;
+      setFacNames(newNames);
+      setActiveNameIndex(index);
+      setShowSuggestions(true);
+  };
+
+  // Add new Name input row
+  const addNameRow = () => {
+      setFacNames([...facNames, '']);
+  };
+
+  // Remove Name input row
+  const removeNameRow = (index: number) => {
+      const newNames = facNames.filter((_, i) => i !== index);
+      setFacNames(newNames);
+  };
+
+  // Handle Subject Input Change
+  const handleFacSubjectChange = (index: number, value: string) => {
+      const newSubjects = [...facSubjects];
+      newSubjects[index] = value;
+      setFacSubjects(newSubjects);
+  };
+
+  // Add new Subject input row
+  const addSubjectRow = () => {
+      setFacSubjects([...facSubjects, '']);
+  };
+
+  // Remove Subject input row
+  const removeSubjectRow = (index: number) => {
+      const newSubjects = facSubjects.filter((_, i) => i !== index);
+      setFacSubjects(newSubjects);
+  };
+
+  // Autocomplete Select
+  const selectContact = (contact: Contact) => {
+    const newNames = [...facNames];
+    newNames[activeNameIndex] = contact.name;
+    setFacNames(newNames);
+    setShowSuggestions(false);
+  };
+
   const handleEditFacilitatorInput = (value: string) => { setEditNameInput(value); setShowEditSuggestions(true); };
   const selectEditContact = (contact: Contact) => { setEditNameInput(contact.name); setEditWaInput(contact.whatsapp); setShowEditSuggestions(false); };
   const handleProcessOrganizerInput = (value: string) => { setProcessOrganizerName(value); setShowProcessSuggestions(true); if (!value) setProcessOrganizerWa(''); };
   const selectProcessContact = (contact: Contact) => { setProcessOrganizerName(contact.name); setProcessOrganizerWa(contact.whatsapp); setShowProcessSuggestions(false); };
 
   const addFacilitatorFromTop = () => {
-    if (facName && facSubject && facDate) {
-      let waToUse = facWhatsapp;
-      const existingGroup = groupedFacilitators[facName];
-      if (existingGroup && existingGroup.length > 0 && !waToUse) waToUse = existingGroup[0].whatsapp || '';
-      const maxOrder = facilitators.reduce((max, f) => Math.max(max, f.order || 0), 0);
-      setFacilitators([...facilitators, { id: uuidv4(), name: facName, subject: facSubject, sessionDate: facDate, sessionStartTime: facTime || undefined, whatsapp: waToUse, order: maxOrder + 1 }]);
-      setFacName(''); setFacSubject(''); setFacDate(''); setFacTime(''); setFacWhatsapp(''); setShowTimeInput(false);
-    } else { alert("Lengkapi Nama, Materi, dan Tanggal Sesi."); }
+    // Filter out empty strings
+    const validNames = facNames.map(n => n.trim()).filter(Boolean);
+    const validSubjects = facSubjects.map(s => s.trim()).filter(Boolean);
+
+    if (validNames.length > 0 && validSubjects.length > 0 && facDate) {
+      const newFacilitators: Facilitator[] = [];
+      let maxOrder = facilitators.reduce((max, f) => Math.max(max, f.order || 0), 0);
+
+      // Create Cartesian Product (Every Name gets Every Subject)
+      validNames.forEach(name => {
+          // Intelligent WhatsApp Matching from DB
+          let waToUse = '';
+          const contact = savedContacts.find(c => c.name.toLowerCase() === name.toLowerCase());
+          if (contact) waToUse = contact.whatsapp;
+          
+          if (!waToUse) {
+              const existingFac = facilitators.find(f => f.name.toLowerCase() === name.toLowerCase());
+              if (existingFac && existingFac.whatsapp) waToUse = existingFac.whatsapp;
+          }
+
+          validSubjects.forEach(subject => {
+             maxOrder++;
+             newFacilitators.push({
+                 id: uuidv4(),
+                 name: name,
+                 subject: subject,
+                 sessionDate: facDate,
+                 sessionStartTime: facTime || undefined,
+                 whatsapp: waToUse,
+                 order: maxOrder
+             });
+          });
+      });
+
+      setFacilitators([...facilitators, ...newFacilitators]);
+      
+      // Reset inputs to single empty row
+      setFacNames(['']); 
+      setFacSubjects(['']); 
+      setFacDate(''); 
+      setFacTime(''); 
+      setShowTimeInput(false);
+    } else { 
+        alert("Lengkapi minimal satu Nama, satu Materi, dan Tanggal Sesi."); 
+    }
   };
 
-  const applyTheme = (themeId: string) => {
-      setIsThemeDropdownOpen(false);
-      if (!themeId) return;
-      const selectedTheme = availableThemes.find(t => t.id === themeId);
-      if (selectedTheme && confirm(`Terapkan tema "${selectedTheme.name}"? \n\nIni akan mengganti seluruh pertanyaan pada bagian Fasilitator DAN Penyelenggaraan.`)) {
-          setFacilitatorQuestions((selectedTheme.facilitatorQuestions || []).map(q => ({ id: uuidv4(), label: q.label, type: q.type })));
-          setProcessQuestions((selectedTheme.processQuestions || []).map(q => ({ id: uuidv4(), label: q.label, type: q.type })));
-          setSelectedThemeName(selectedTheme.name);
-      }
-  };
-
+  // ... (Other functions: applyTheme, edit/delete facilitators, etc. remain unchanged)
+  const applyTheme = (themeId: string) => { setIsThemeDropdownOpen(false); if (!themeId) return; const selectedTheme = availableThemes.find(t => t.id === themeId); if (selectedTheme && confirm(`Terapkan tema "${selectedTheme.name}"? \n\nIni akan mengganti seluruh pertanyaan.`)) { setFacilitatorQuestions((selectedTheme.facilitatorQuestions || []).map(q => ({ id: uuidv4(), label: q.label, type: q.type }))); setProcessQuestions((selectedTheme.processQuestions || []).map(q => ({ id: uuidv4(), label: q.label, type: q.type }))); setSelectedThemeName(selectedTheme.name); } };
   const startEditFacilitator = (name: string, currentWa?: string) => { setEditingFacName(name); setEditNameInput(name); setEditWaInput(currentWa || ''); setShowEditSuggestions(false); };
   const saveEditFacilitator = () => { if (!editingFacName || !editNameInput) return; setFacilitators(facilitators.map(f => f.name === editingFacName ? { ...f, name: editNameInput, whatsapp: editWaInput } : f)); setEditingFacName(null); };
   const updateOrder = (name: string, newOrder: string) => { const orderNum = parseInt(newOrder); if(isNaN(orderNum)) return; setFacilitators(facilitators.map(f => f.name === name ? { ...f, order: orderNum } : f)); };
@@ -269,11 +331,9 @@ export const CreateTraining: React.FC = () => {
       title, description, startDate, endDate, processEvaluationDate: processDate || endDate, 
       facilitators, facilitatorQuestions, processQuestions, createdAt: createdAt, targets: targets, reportedTargets: currentReportedTargets,
       processOrganizer: pOrganizer, processTarget: processTarget ? parseInt(processTarget) : undefined, processReported: currentProcessReported,
-      
-      // Save New Optional Fields
       learningMethod: useMethod ? learningMethod : undefined,
       location: useLocation ? location : undefined,
-      participantLimit: participantLimit ? parseInt(participantLimit) : undefined // Save limit
+      participantLimit: participantLimit ? parseInt(participantLimit) : undefined
     };
 
     await saveTraining(newTraining);
@@ -299,12 +359,13 @@ export const CreateTraining: React.FC = () => {
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${step >= 2 ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
             </div>
         </div>
+        
+        {/* Step 1 Block (Unchanged content omitted for brevity, logic maintained) */}
         <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-opacity duration-300 ${step === 2 ? 'opacity-70 pointer-events-none' : 'opacity-100'}`}>
             <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3"><div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><Calendar size={20} /></div><h2 className="font-semibold text-slate-800">Langkah 1: Informasi Dasar</h2></div>
             <div className="p-6 grid gap-6">
                 <div><label className="block text-sm font-medium text-slate-700 mb-2">Judul / Topik Pelatihan</label><input type="text" value={title} onChange={(e) => setTitle(e.target.value)} disabled={step === 2} className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none transition disabled:bg-slate-50" placeholder="Contoh: Digital Marketing Batch 5" /></div>
                 
-                {/* NEW OPTIONAL INFO */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
@@ -339,17 +400,9 @@ export const CreateTraining: React.FC = () => {
                   <div><label className="block text-sm font-medium text-slate-700 mb-2">Tanggal Selesai</label><input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} disabled={step === 2} className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
                 </div>
                 
-                {/* NEW: Participant Limit Input with NARROW COLUMN */}
                 <div className="md:w-1/3">
                     <label className="block text-sm font-medium text-slate-700 mb-2">Jumlah Peserta (Max Responden)</label>
-                    <input 
-                        type="number" 
-                        value={participantLimit} 
-                        onChange={(e) => setParticipantLimit(e.target.value)} 
-                        disabled={step === 2} 
-                        className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none" 
-                        placeholder="0" 
-                    />
+                    <input type="number" value={participantLimit} onChange={(e) => setParticipantLimit(e.target.value)} disabled={step === 2} className="w-full border border-slate-300 rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="0" />
                     <p className="text-xs text-slate-500 mt-1">Kosongi jika tidak ada batasan. Data di luar batas ini tidak akan tersimpan.</p>
                 </div>
 
@@ -358,24 +411,95 @@ export const CreateTraining: React.FC = () => {
                 {step === 2 && (<div className="flex justify-end pt-2"><button onClick={() => setStep(1)} className="text-slate-500 hover:text-indigo-600 text-sm font-medium underline">Ubah Informasi Dasar</button></div>)}
             </div>
         </div>
+
         {step === 2 && (
-            // ... (Content step 2 unchanged)
             <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3"><div className="bg-emerald-100 p-2 rounded-lg text-emerald-600"><UserPlus size={20} /></div><h2 className="font-semibold text-slate-800">Langkah 2A: Daftar Fasilitator</h2></div>
                     <div className="p-6">
-                        {/* INPUT AWAL */}
-                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-8 items-end bg-slate-50 p-4 rounded-xl border border-slate-100">
-                            {/* CUSTOM AUTOCOMPLETE DROPDOWN */}
-                            <div className="md:col-span-3 relative">
+                        {/* INPUT AWAL (DYNAMIC FIELDS) */}
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-8 items-start bg-slate-50 p-4 rounded-xl border border-slate-100">
+                            
+                            {/* KOLOM NAMA (ARRAY) */}
+                            <div className="md:col-span-3 relative space-y-2">
                                 <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Nama</label>
-                                <input type="text" value={facName} onChange={(e) => handleFacilitatorInput(e.target.value)} onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} placeholder="Nama Fasilitator" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" autoComplete="off" />
-                                {showSuggestions && facName && filteredContacts.length > 0 && (<ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">{filteredContacts.map(c => (<li key={c.id} onClick={() => selectContact(c)} className="px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer border-b border-slate-50 last:border-0 transition-colors">{c.name}</li>))}</ul>)}
+                                {facNames.map((name, idx) => (
+                                    <div key={idx} className="relative group">
+                                        <input 
+                                            type="text" 
+                                            value={name} 
+                                            onChange={(e) => handleFacNameChange(idx, e.target.value)} 
+                                            onFocus={() => setActiveNameIndex(idx)}
+                                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)} 
+                                            placeholder="Nama Fasilitator..." 
+                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                            autoComplete="off" 
+                                        />
+                                        {/* Button logic: If more than 1 row, show trash. Else if last row, show Plus (via logic below) */}
+                                        {facNames.length > 1 ? (
+                                            <button onClick={() => removeNameRow(idx)} className="absolute right-1 top-1 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus Baris">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        ) : (
+                                            <button onClick={addNameRow} className="absolute right-1 top-1 p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Tambah baris nama">
+                                                <Plus size={16} />
+                                            </button>
+                                        )}
+                                        {/* Add Plus button for adding row below IF it is the last item */}
+                                        {idx === facNames.length - 1 && facNames.length > 1 && (
+                                            <button onClick={addNameRow} className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded-full p-0.5 z-10 shadow-sm border border-white" title="Tambah Baris Bawah">
+                                                <Plus size={12} />
+                                            </button>
+                                        )}
+
+                                        {/* Autocomplete Dropdown (Scoped to active input) */}
+                                        {showSuggestions && activeNameIndex === idx && filteredContacts.length > 0 && (
+                                            <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                                                {filteredContacts.map(c => (
+                                                    <li key={c.id} onClick={() => selectContact(c)} className="px-3 py-2 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 cursor-pointer border-b border-slate-50 last:border-0 transition-colors">
+                                                        {c.name}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
-                            <div className="md:col-span-4"><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Materi</label><input type="text" value={facSubject} onChange={(e) => setFacSubject(e.target.value)} placeholder="Topik Materi" className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" /></div>
-                            <div className="md:col-span-4"><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Tanggal {showTimeInput && '& Waktu'}</label><div className="flex gap-2"><input type="date" value={facDate} min={startDate} max={endDate} onChange={(e) => setFacDate(e.target.value)} className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0" />{showTimeInput ? (<div className="relative animate-in fade-in slide-in-from-right-4 duration-300 flex gap-1 shrink-0"><input type="time" value={facTime} onChange={(e) => setFacTime(e.target.value)} className="w-24 border border-slate-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" /><button onClick={() => { setShowTimeInput(false); setFacTime(''); }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-red-100 hover:border-red-200 transition" title="Hapus Waktu"><X size={16} /></button></div>) : (<button onClick={() => setShowTimeInput(true)} className="p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-300 rounded-lg hover:border-indigo-300 transition" title="Tambah Waktu Spesifik"><Clock size={18} /></button>)}</div></div>
-                            <div className="md:col-span-1"><button onClick={addFacilitatorFromTop} disabled={!facName || !facSubject || !facDate} className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-900 flex items-center justify-center h-[38px]"><Plus size={16} /></button></div>
+
+                            {/* KOLOM MATERI (ARRAY) */}
+                            <div className="md:col-span-4 relative space-y-2">
+                                <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Materi</label>
+                                {facSubjects.map((sub, idx) => (
+                                    <div key={idx} className="relative group">
+                                        <input 
+                                            type="text" 
+                                            value={sub} 
+                                            onChange={(e) => handleFacSubjectChange(idx, e.target.value)} 
+                                            placeholder="Topik Materi..." 
+                                            className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2 text-sm" 
+                                        />
+                                        {facSubjects.length > 1 ? (
+                                            <button onClick={() => removeSubjectRow(idx)} className="absolute right-1 top-1 p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Hapus Baris">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        ) : (
+                                            <button onClick={addSubjectRow} className="absolute right-1 top-1 p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Tambah baris materi">
+                                                <Plus size={16} />
+                                            </button>
+                                        )}
+                                        {idx === facSubjects.length - 1 && facSubjects.length > 1 && (
+                                            <button onClick={addSubjectRow} className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-indigo-100 hover:bg-indigo-200 text-indigo-600 rounded-full p-0.5 z-10 shadow-sm border border-white" title="Tambah Baris Bawah">
+                                                <Plus size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="md:col-span-4 self-start"><label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Tanggal {showTimeInput && '& Waktu'}</label><div className="flex gap-2"><input type="date" value={facDate} min={startDate} max={endDate} onChange={(e) => setFacDate(e.target.value)} className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0" />{showTimeInput ? (<div className="relative animate-in fade-in slide-in-from-right-4 duration-300 flex gap-1 shrink-0"><input type="time" value={facTime} onChange={(e) => setFacTime(e.target.value)} className="w-24 border border-slate-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" /><button onClick={() => { setShowTimeInput(false); setFacTime(''); }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg border border-red-100 hover:border-red-200 transition" title="Hapus Waktu"><X size={16} /></button></div>) : (<button onClick={() => setShowTimeInput(true)} className="p-2 text-slate-500 hover:text-indigo-600 bg-white border border-slate-300 rounded-lg hover:border-indigo-300 transition" title="Tambah Waktu Spesifik"><Clock size={18} /></button>)}</div></div>
+                            <div className="md:col-span-1 self-start mt-6 md:mt-0"><button onClick={addFacilitatorFromTop} disabled={!facNames[0] || !facSubjects[0] || !facDate} className="w-full bg-slate-800 text-white py-2 rounded-lg text-sm font-medium hover:bg-slate-900 flex items-center justify-center h-[38px]"><Plus size={16} /></button></div>
                         </div>
+
                         {/* LIST FACILITATORS (GROUPED) */}
                         <div className="space-y-4">
                         {Object.keys(groupedFacilitators).length === 0 && <p className="text-center text-slate-400 text-sm py-4 italic">Belum ada fasilitator ditambahkan.</p>}
