@@ -25,9 +25,16 @@ export const AdminDashboard: React.FC = () => {
   const [mgmtDateStart, setMgmtDateStart] = useState('');
   const [mgmtDateEnd, setMgmtDateEnd] = useState('');
   
-  // New Filters
+  // Management Filters
   const [filterMethod, setFilterMethod] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
+
+  // Report Filters (New)
+  const [reportSearch, setReportSearch] = useState('');
+  const [reportDateStart, setReportDateStart] = useState('');
+  const [reportDateEnd, setReportDateEnd] = useState('');
+  const [reportFilterMethod, setReportFilterMethod] = useState('');
+  const [reportFilterLocation, setReportFilterLocation] = useState('');
 
   // Delete Confirmation State
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -322,6 +329,7 @@ export const AdminDashboard: React.FC = () => {
      return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
+  // Filtered Logic for Management Tab
   const filteredMgmtTrainings = trainings
     .filter(t => {
       const matchSearch = t.title.toLowerCase().includes(mgmtSearch.toLowerCase());
@@ -332,6 +340,22 @@ export const AdminDashboard: React.FC = () => {
       
       const matchMethod = filterMethod ? t.learningMethod === filterMethod : true;
       const matchLocation = filterLocation ? t.location === filterLocation : true;
+
+      return matchSearch && matchDate && matchMethod && matchLocation;
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  // Filtered Logic for Reports Tab (New)
+  const filteredReportTrainings = trainings
+    .filter(t => {
+      const matchSearch = t.title.toLowerCase().includes(reportSearch.toLowerCase());
+      let matchDate = true;
+      if (reportDateStart && reportDateEnd) {
+        matchDate = (t.startDate <= reportDateEnd) && (t.endDate >= reportDateStart);
+      }
+      
+      const matchMethod = reportFilterMethod ? t.learningMethod === reportFilterMethod : true;
+      const matchLocation = reportFilterLocation ? t.location === reportFilterLocation : true;
 
       return matchSearch && matchDate && matchMethod && matchLocation;
     })
@@ -840,7 +864,50 @@ export const AdminDashboard: React.FC = () => {
         )}
         {activeTab === 'reports' && (
              <div className="animate-in fade-in duration-300 space-y-6">
-                <div className="mb-8"><h2 className="text-2xl font-bold text-slate-800">Laporan Akhir</h2></div>
+                <div className="mb-4"><h2 className="text-2xl font-bold text-slate-800">Laporan Akhir</h2></div>
+                
+                {/* Search & Filter for Reports (Compact Design) */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                        <div className="md:col-span-4 relative">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Cari Pelatihan</label>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14}/>
+                                <input type="text" value={reportSearch} onChange={e => setReportSearch(e.target.value)} placeholder="Nama pelatihan..." className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs" />
+                            </div>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Dari Tanggal</label>
+                            <input type="date" value={reportDateStart} onChange={e => setReportDateStart(e.target.value)} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Hingga Tanggal</label>
+                            <input type="date" value={reportDateEnd} onChange={e => setReportDateEnd(e.target.value)} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs" />
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Metode</label>
+                            <select value={reportFilterMethod} onChange={e => setReportFilterMethod(e.target.value)} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                <option value="">Semua</option>
+                                <option value="Klasikal">Klasikal</option>
+                                <option value="Blended">Blended</option>
+                                <option value="Daring Learning">Daring</option>
+                            </select>
+                        </div>
+                        <div className="md:col-span-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Kampus</label>
+                            <select value={reportFilterLocation} onChange={e => setReportFilterLocation(e.target.value)} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                                <option value="">Semua</option>
+                                <option value="Surabaya">SBY</option>
+                                <option value="Malang">MLG</option>
+                                <option value="Madiun">MDN</option>
+                            </select>
+                        </div>
+                        <div className="md:col-span-1">
+                            <button onClick={() => {setReportSearch(''); setReportDateStart(''); setReportDateEnd(''); setReportFilterMethod(''); setReportFilterLocation('');}} className="p-1.5 text-slate-400 hover:text-red-500 w-full flex justify-center items-center h-[30px] border border-transparent hover:border-red-100 rounded-lg bg-slate-50 hover:bg-red-50"><RotateCcw size={16}/></button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="bg-white rounded-2xl shadow-sm border">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 border-b border-slate-200">
@@ -851,7 +918,7 @@ export const AdminDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {trainings.map(t => (
+                            {filteredReportTrainings.map(t => (
                                 <tr key={t.id} className="hover:bg-slate-50/50 transition">
                                     <td className="px-6 py-4">
                                         <div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div>
@@ -878,6 +945,13 @@ export const AdminDashboard: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
+                            {filteredReportTrainings.length === 0 && (
+                                <tr>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-slate-400 italic">
+                                        Tidak ada data pelatihan yang sesuai filter.
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
                 </div>
