@@ -23,7 +23,6 @@ const getScoreLabel = (val: number, type: QuestionType) => {
         if (val >= 1.8) return 'Sedang';
         return 'Kurang';
     } else {
-        // Slider Scale: 45-100 with breakpoints 55, 75, 85
         if (val >= 86) return 'Sangat Baik';
         if (val >= 76) return 'Baik';
         if (val >= 56) return 'Sedang';
@@ -32,21 +31,19 @@ const getScoreLabel = (val: number, type: QuestionType) => {
 };
 
 interface SessionExportData {
-    name: string; // Added name to session data for flat list
+    name: string; 
     subject: string;
     sessionDate: string;
-    order: number; // For sorting
+    order: number; 
     responses: Response[];
-    averages: Record<string, string>; // Formatted "80 (Baik)"
+    averages: Record<string, string>; 
     comments: Record<string, string[]>;
     overall: string;
     overallVal: number;
 }
 
-// Utility untuk memproses data mentah menjadi statistik untuk ekspor
 const processDataForExport = (training: Training, responses: Response[]) => {
   const result: any = {
-    // Structure: { "Nama Fasilitator": [SessionData1, SessionData2] }
     facilitators: {} as Record<string, SessionExportData[]>,
     process: {
       responses: [],
@@ -58,7 +55,6 @@ const processDataForExport = (training: Training, responses: Response[]) => {
     }
   };
 
-  // 1. Group Facilitators by Name AND Subject
   responses.filter(r => r.type === 'facilitator').forEach(r => {
     const name = r.targetName || 'Unknown';
     const subject = r.targetSubject || 'Umum';
@@ -67,13 +63,10 @@ const processDataForExport = (training: Training, responses: Response[]) => {
         result.facilitators[name] = [];
     }
 
-    // Check if this subject session already exists in the array
     let session = result.facilitators[name].find((s: SessionExportData) => s.subject === subject);
     
     if (!session) {
-        // Find metadata from training data (match name & subject for date)
         const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
-        
         session = {
             name: name,
             subject: subject,
@@ -87,14 +80,11 @@ const processDataForExport = (training: Training, responses: Response[]) => {
         };
         result.facilitators[name].push(session);
     }
-
     session.responses.push(r);
   });
 
-  // 2. Calculate averages for each facilitator SESSION
   Object.keys(result.facilitators).forEach(name => {
       const sessions = result.facilitators[name] as SessionExportData[];
-      
       sessions.forEach(session => {
           let totalFacScore = 0;
           let totalFacCount = 0;
@@ -127,7 +117,6 @@ const processDataForExport = (training: Training, responses: Response[]) => {
       });
   });
 
-  // 3. Process Penyelenggaraan (Tetap Flat)
   const procResponses = responses.filter(r => r.type === 'process');
   result.process.responses = procResponses;
   let totalProcScore = 0;
@@ -151,7 +140,6 @@ const processDataForExport = (training: Training, responses: Response[]) => {
     }
   });
 
-  // Calculate Overall for Process
   if (totalProcCount > 0) {
       const overallAvg = totalProcScore / totalProcCount;
       result.process.overallVal = overallAvg;
@@ -163,13 +151,11 @@ const processDataForExport = (training: Training, responses: Response[]) => {
   return result;
 };
 
-// Helper: Get ALL sessions in a flat list sorted by DATE (for Section A)
 const getFlatChronologicalSessions = (dataFacilitators: Record<string, SessionExportData[]>) => {
     let allSessions: SessionExportData[] = [];
     Object.values(dataFacilitators).forEach(sessions => {
         allSessions = [...allSessions, ...sessions];
     });
-
     return allSessions.sort((a, b) => {
         if (a.sessionDate < b.sessionDate) return -1;
         if (a.sessionDate > b.sessionDate) return 1;
@@ -177,9 +163,7 @@ const getFlatChronologicalSessions = (dataFacilitators: Record<string, SessionEx
     });
 };
 
-// Helper: Get Sorted Facilitator Names (for Section B grouping), but ensure inner sessions are date sorted
 const getSortedFacilitatorNamesForRecap = (dataFacilitators: Record<string, SessionExportData[]>, training: Training) => {
-    // 1. Sort Names first
     const names = Object.keys(dataFacilitators).sort((a, b) => {
         const facA = training.facilitators.find(f => f.name === a);
         const facB = training.facilitators.find(f => f.name === b);
@@ -187,8 +171,6 @@ const getSortedFacilitatorNamesForRecap = (dataFacilitators: Record<string, Sess
         const orderB = facB?.order || 0;
         return orderA - orderB;
     });
-
-    // 2. Sort Sessions inside each Name by Date
     names.forEach(name => {
         dataFacilitators[name].sort((a, b) => {
             if (a.sessionDate < b.sessionDate) return -1;
@@ -196,7 +178,6 @@ const getSortedFacilitatorNamesForRecap = (dataFacilitators: Record<string, Sess
             return 0;
         });
     });
-
     return names;
 };
 
@@ -210,19 +191,18 @@ export const exportToPDF = async (training: Training) => {
   doc.text('Laporan Rekapitulasi Evaluasi Pelatihan', 14, 20);
   doc.setFontSize(10);
   
-  // Wrap Title if too long
   const titleLines = doc.splitTextToSize(`Judul: ${training.title}`, 180);
   doc.text(titleLines, 14, 28);
   
   let y = 28 + (titleLines.length * 5); 
   
-  // Optional Information
+  // Clean format without parentheses
   if (training.learningMethod) {
-      doc.text(`Metode Pembelajaran: ${training.learningMethod}`, 14, y);
+      doc.text(`Metode: ${training.learningMethod}`, 14, y);
       y += 5;
   }
   if (training.location) {
-      doc.text(`Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, 14, y);
+      doc.text(`Lokasi: Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, 14, y);
       y += 5;
   }
 
@@ -231,7 +211,6 @@ export const exportToPDF = async (training: Training) => {
   doc.text(`Dicetak pada: ${timestamp}`, 14, y);
   y += 10;
 
-  // --- BAGIAN A: DETAIL FASILITATOR (FLAT LIST, CHRONOLOGICAL) ---
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text('A. Evaluasi Detail Fasilitator', 14, y);
@@ -240,27 +219,22 @@ export const exportToPDF = async (training: Training) => {
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
   flatSessions.forEach((session) => {
-    // Page break check (Name Header)
     if (y > 240) { doc.addPage(); y = 20; }
     
-    // Header Fasilitator Name
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    doc.setFillColor(230, 230, 250); // Light Purple
+    doc.setFillColor(230, 230, 250); 
     doc.rect(14, y - 5, 182, 7, 'F');
     doc.text(`Nama Fasilitator: ${session.name}`, 16, y);
     y += 6;
 
-    // Session Info
     doc.setFontSize(10);
     doc.setFont("helvetica", "bolditalic");
     const dateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
-    // Wrap Subject
     const subjectLines = doc.splitTextToSize(`Materi: ${session.subject}${dateStr}`, 180);
     doc.text(subjectLines, 14, y);
-    y += (subjectLines.length * 4); // Adjust spacing based on wrapped text
+    y += (subjectLines.length * 4); 
 
-    // 1. Tabel Nilai
     const scoreRows = training.facilitatorQuestions
     .filter(q => q.type !== 'text')
     .map(q => [q.label, session.averages[q.id] || '0.00 (Kurang)']);
@@ -286,7 +260,6 @@ export const exportToPDF = async (training: Training) => {
     
     y = (doc as any).lastAutoTable.finalY + 5;
 
-    // 2. Daftar Komentar
     const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
     textQs.forEach(q => {
         const comments = session.comments[q.id];
@@ -309,10 +282,9 @@ export const exportToPDF = async (training: Training) => {
             y = (doc as any).lastAutoTable.finalY + 3;
         }
     });
-    y += 4; // Spasi antar materi/orang
+    y += 4; 
   });
 
-  // --- BAGIAN B: REKAPITULASI (Summary Section B) ---
   doc.addPage();
   y = 20;
   
@@ -342,12 +314,10 @@ export const exportToPDF = async (training: Training) => {
       });
   });
 
-  // Hitung Rata-rata Total
   const grandAvg = grandCount > 0 ? grandTotal / grandCount : 0;
   const grandLabelType: QuestionType = grandAvg > 5 ? 'slider' : 'star';
   const grandDisplay = `${grandAvg.toFixed(2)} (${getScoreLabel(grandAvg, grandLabelType)})`;
 
-  // Tambahkan baris total
   summaryRows.push(['', '', '', 'RATA-RATA TOTAL', grandDisplay]);
 
   autoTable(doc, {
@@ -367,7 +337,6 @@ export const exportToPDF = async (training: Training) => {
   });
   y = (doc as any).lastAutoTable.finalY + 10;
 
-  // --- BAGIAN C: PENYELENGGARAAN ---
   doc.addPage();
   y = 20;
 
@@ -442,7 +411,7 @@ export const exportToExcel = async (training: Training) => {
   ];
 
   if (training.learningMethod) infoData.push(['Metode Pembelajaran', training.learningMethod]);
-  if (training.location) infoData.push(['Lokasi Kampus', `UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`]);
+  if (training.location) infoData.push(['Lokasi', `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`]);
 
   infoData.push(
       ['Periode', `${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`],
@@ -450,7 +419,6 @@ export const exportToExcel = async (training: Training) => {
       []
   );
 
-  // --- SHEET 1: DETAIL FASILITATOR (Section A) - FLAT LIST CHRONOLOGICAL ---
   const detailRows: any[] = [...infoData, ['A. DETAIL EVALUASI FASILITATOR'], []];
   
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
@@ -476,13 +444,12 @@ export const exportToExcel = async (training: Training) => {
               }
           });
       }
-      detailRows.push([]); // Spacer
+      detailRows.push([]); 
   });
 
   const detailWs = XLSX.utils.aoa_to_sheet(detailRows);
   XLSX.utils.book_append_sheet(wb, detailWs, 'A. Detail Fasilitator');
 
-  // --- SHEET 2: REKAPITULASI (Section B) - GROUPED NAME, SORTED DATE ---
   const summaryHeader = ['No', 'Nama Fasilitator', 'Materi', 'Tanggal', 'Nilai Akhir'];
   const summaryRows: any[] = [];
   let no = 1;
@@ -508,8 +475,6 @@ export const exportToExcel = async (training: Training) => {
   const rekapWs = XLSX.utils.aoa_to_sheet([...infoData, ['B. REKAPITULASI NILAI KESELURUHAN'], [], summaryHeader, ...summaryRows]);
   XLSX.utils.book_append_sheet(wb, rekapWs, 'B. Rekapitulasi');
 
-
-  // --- SHEET 3: PENYELENGGARAAN (Section C) ---
   const procRows: any[] = [...infoData, ['C. EVALUASI PENYELENGGARAAN']];
   
   if (training.processOrganizer && training.processOrganizer.name) {
@@ -549,7 +514,6 @@ export const exportToWord = async (training: Training) => {
 
   const sections: any[] = [];
 
-  // Title
   sections.push(new Paragraph({
     text: "Laporan Rekapitulasi Evaluasi Pelatihan",
     heading: HeadingLevel.HEADING_1,
@@ -564,7 +528,7 @@ export const exportToWord = async (training: Training) => {
       infoText.push(new TextRun({ text: `\nMetode Pembelajaran: ${training.learningMethod}`, break: 1 }));
   }
   if (training.location) {
-      infoText.push(new TextRun({ text: `\nDi UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, break: 1 }));
+      infoText.push(new TextRun({ text: `\nLokasi: Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, break: 1 }));
   }
 
   infoText.push(new TextRun({ text: `\nPeriode: ${formatDateID(training.startDate)} - ${formatDateID(training.endDate)}`, break: 1 }));
@@ -575,7 +539,6 @@ export const exportToWord = async (training: Training) => {
     spacing: { after: 400 },
   }));
 
-  // --- A. DETAIL FASILITATOR (FLAT CHRONOLOGICAL) ---
   sections.push(new Paragraph({ text: "A. Evaluasi Detail Fasilitator", heading: HeadingLevel.HEADING_2 }));
   
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
@@ -589,7 +552,6 @@ export const exportToWord = async (training: Training) => {
     const sessionDateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
     sections.push(new Paragraph({ text: `Materi: ${session.subject}${sessionDateStr}`, bold: true, spacing: { before: 100 } }));
 
-    // Table Scores
     const rows = [
         new TableRow({
             children: [
@@ -641,7 +603,6 @@ export const exportToWord = async (training: Training) => {
     sections.push(new Paragraph({ text: "", spacing: { after: 200 } })); 
   });
 
-  // --- B. REKAPITULASI (GROUPED BY NAME, SORTED DATE) ---
   sections.push(new Paragraph({ children: [new PageBreak()] }));
   sections.push(new Paragraph({ text: "B. Rekapitulasi Nilai Keseluruhan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
@@ -703,8 +664,6 @@ export const exportToWord = async (training: Training) => {
       }
   }));
 
-
-  // --- C. PENYELENGGARAAN ---
   sections.push(new Paragraph({ children: [new PageBreak()] }));
   sections.push(new Paragraph({ text: "C. Evaluasi Penyelenggaraan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
