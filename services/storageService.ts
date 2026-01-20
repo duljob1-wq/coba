@@ -13,7 +13,8 @@ import {
   orderBy, 
   limit, 
   writeBatch,
-  Timestamp 
+  Timestamp,
+  getCountFromServer 
 } from 'firebase/firestore';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -166,6 +167,42 @@ export const saveResponse = async (response: Response): Promise<void> => {
     } catch (error) {
         console.error("Error saving response:", error);
         throw error;
+    }
+};
+
+// NEW FUNCTION: Check if participant limit is reached for a specific context
+export const checkParticipantLimitReached = async (
+    trainingId: string, 
+    limitVal: number, 
+    type: 'facilitator' | 'process', 
+    targetName?: string, 
+    targetSubject?: string
+): Promise<boolean> => {
+    try {
+        const coll = collection(db, 'responses');
+        let q;
+
+        if (type === 'facilitator') {
+            q = query(
+                coll,
+                where('trainingId', '==', trainingId),
+                where('type', '==', 'facilitator'),
+                where('targetName', '==', targetName),
+                where('targetSubject', '==', targetSubject)
+            );
+        } else {
+            q = query(
+                coll,
+                where('trainingId', '==', trainingId),
+                where('type', '==', 'process')
+            );
+        }
+
+        const snapshot = await getCountFromServer(q);
+        return snapshot.data().count >= limitVal;
+    } catch (error) {
+        console.error("Error checking participant limit:", error);
+        return false; // Fail safe: allow submission if check fails
     }
 };
 

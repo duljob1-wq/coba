@@ -216,6 +216,16 @@ export const exportToPDF = async (training: Training) => {
   
   let y = 28 + (titleLines.length * 5); 
   
+  // Optional Information
+  if (training.learningMethod) {
+      doc.text(`Metode Pembelajaran: ${training.learningMethod}`, 14, y);
+      y += 5;
+  }
+  if (training.location) {
+      doc.text(`Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, 14, y);
+      y += 5;
+  }
+
   doc.text(`Periode: ${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`, 14, y);
   y += 5;
   doc.text(`Dicetak pada: ${timestamp}`, 14, y);
@@ -303,7 +313,6 @@ export const exportToPDF = async (training: Training) => {
   });
 
   // --- BAGIAN B: REKAPITULASI (Summary Section B) ---
-  // Group by Name, but ensure dates inside are sorted
   doc.addPage();
   y = 20;
   
@@ -317,7 +326,6 @@ export const exportToPDF = async (training: Training) => {
   let grandTotal = 0;
   let grandCount = 0;
 
-  // Use Sorted Names here as well (Grouped by Name)
   const sortedNames = getSortedFacilitatorNamesForRecap(data.facilitators, training);
 
   sortedNames.forEach((name) => {
@@ -430,11 +438,17 @@ export const exportToExcel = async (training: Training) => {
   const wb = XLSX.utils.book_new();
 
   const infoData = [
-      ['Judul Pelatihan', training.title],
+      ['Judul Pelatihan', training.title]
+  ];
+
+  if (training.learningMethod) infoData.push(['Metode Pembelajaran', training.learningMethod]);
+  if (training.location) infoData.push(['Lokasi Kampus', `UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`]);
+
+  infoData.push(
       ['Periode', `${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`],
       ['Dicetak', formatDateID(new Date().toISOString())],
       []
-  ];
+  );
 
   // --- SHEET 1: DETAIL FASILITATOR (Section A) - FLAT LIST CHRONOLOGICAL ---
   const detailRows: any[] = [...infoData, ['A. DETAIL EVALUASI FASILITATOR'], []];
@@ -542,12 +556,22 @@ export const exportToWord = async (training: Training) => {
     alignment: AlignmentType.CENTER,
   }));
 
-  sections.push(new Paragraph({
-    children: [
+  const infoText = [
       new TextRun({ text: `Judul Pelatihan: ${training.title}`, bold: true }),
-      new TextRun({ text: `\nPeriode: ${formatDateID(training.startDate)} - ${formatDateID(training.endDate)}`, break: 1 }),
-      new TextRun({ text: `\nJumlah Responden: ${responses.length}`, break: 1 }),
-    ],
+  ];
+
+  if (training.learningMethod) {
+      infoText.push(new TextRun({ text: `\nMetode Pembelajaran: ${training.learningMethod}`, break: 1 }));
+  }
+  if (training.location) {
+      infoText.push(new TextRun({ text: `\nDi UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, break: 1 }));
+  }
+
+  infoText.push(new TextRun({ text: `\nPeriode: ${formatDateID(training.startDate)} - ${formatDateID(training.endDate)}`, break: 1 }));
+  infoText.push(new TextRun({ text: `\nJumlah Responden: ${responses.length}`, break: 1 }));
+
+  sections.push(new Paragraph({
+    children: infoText,
     spacing: { after: 400 },
   }));
 

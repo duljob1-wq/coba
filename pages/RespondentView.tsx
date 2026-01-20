@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { getTrainingById, saveResponse, saveTraining, getRespondentHistory, saveRespondentHistory } from '../services/storageService';
+import { getTrainingById, saveResponse, saveTraining, getRespondentHistory, saveRespondentHistory, checkParticipantLimitReached } from '../services/storageService';
 import { checkAndSendAutoReport } from '../services/whatsappService';
 import { Training, Response } from '../types';
 import { StarRating } from '../components/StarRating';
@@ -188,28 +188,50 @@ export const RespondentView: React.FC = () => {
         return;
     }
 
-    // 3. SUBMIT
-    const response: Response = {
-      id: uuidv4(),
-      trainingId: training.id,
-      type: activeTab,
-      targetName,
-      targetSubject: activeTab === 'facilitator' ? targetSubject : undefined,
-      answers,
-      timestamp: Date.now()
-    };
-
-    saveResponse(response);
+    // 3. CHECK LIMIT & SAVE
+    // Logic: If Admin, always save. If Limit Reached, DO NOT SAVE but behave as if successful.
     
-    if (activeTab === 'facilitator' && facId) {
-        // Save to Local History
-        saveRespondentHistory(training.id, facId);
+    let shouldSave = true;
+
+    if (!isAdminMode && training.participantLimit && training.participantLimit > 0) {
+        const isLimitReached = await checkParticipantLimitReached(
+            training.id,
+            training.participantLimit,
+            activeTab,
+            activeTab === 'facilitator' ? targetName : undefined,
+            activeTab === 'facilitator' ? targetSubject : undefined
+        );
+
+        if (isLimitReached) {
+            shouldSave = false;
+            console.log('Participant limit reached. Response will not be saved to DB.');
+        }
+    }
+
+    if (shouldSave) {
+        const response: Response = {
+          id: uuidv4(),
+          trainingId: training.id,
+          type: activeTab,
+          targetName,
+          targetSubject: activeTab === 'facilitator' ? targetSubject : undefined,
+          answers,
+          timestamp: Date.now()
+        };
+
+        saveResponse(response);
         
-        // Send Automation (Facilitator)
-        checkAndSendAutoReport(training.id, facId, targetName, 'facilitator').catch(console.error);
-    } else if (activeTab === 'process') {
-        // Send Automation (Process)
-        checkAndSendAutoReport(training.id, '', '', 'process').catch(console.error);
+        // Automation only triggers if data is actually saved
+        if (activeTab === 'facilitator' && facId) {
+            checkAndSendAutoReport(training.id, facId, targetName, 'facilitator').catch(console.error);
+        } else if (activeTab === 'process') {
+            checkAndSendAutoReport(training.id, '', '', 'process').catch(console.error);
+        }
+    }
+
+    // Always update local history (User experience: "I have done this")
+    if (activeTab === 'facilitator' && facId) {
+        saveRespondentHistory(training.id, facId);
     }
     
     setSubmitted(true);

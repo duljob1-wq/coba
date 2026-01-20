@@ -49,6 +49,11 @@ export interface Training {
   processQuestions: Question[];
   createdAt: number;
   
+  // New Optional Information Fields
+  learningMethod?: string; // Klasikal, Blended, Daring Learning
+  location?: string;       // Malang, Surabaya, Madiun
+  participantLimit?: number; // Batas maksimal responden
+
   // Automation Features
   targets?: number[]; 
   reportedTargets?: Record<string, boolean>; 
