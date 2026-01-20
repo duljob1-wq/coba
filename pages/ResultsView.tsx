@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, X, UserCheck, MapPin, Monitor } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, X, UserCheck } from 'lucide-react';
 
 export const ResultsView: React.FC = () => {
   const { trainingId } = useParams<{ trainingId: string }>();
@@ -281,15 +281,11 @@ export const ResultsView: React.FC = () => {
                     <div className="flex flex-col gap-1 mt-1">
                         <span className="text-sm font-bold text-slate-700">{training.title}</span>
                         
-                        {/* REVISED INFO DISPLAY WITHOUT PARENTHESES */}
-                        {training.learningMethod && (
-                            <span className="text-xs text-slate-500 flex items-center gap-1.5">
-                                <Monitor size={12}/> Metode: {training.learningMethod}
-                            </span>
-                        )}
-                        {training.location && (
-                            <span className="text-xs text-slate-500 flex items-center gap-1.5">
-                                <MapPin size={12}/> Di UPT Pelatihan Kesehatan Masyarakat Kampus {training.location}
+                        {/* COMBINED INFO DISPLAY (SINGLE LINE, PLAIN TEXT) */}
+                        {(training.learningMethod || training.location) && (
+                            <span className="text-xs text-slate-500 mt-0.5">
+                                {training.learningMethod && `Metode Pembelajaran ${training.learningMethod} `}
+                                {training.location && `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`}
                             </span>
                         )}
                         

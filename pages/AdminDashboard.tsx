@@ -4,7 +4,7 @@ import { getTrainings, deleteTraining, getResponses, getGlobalQuestions, saveGlo
 import { exportToPDF, exportToExcel, exportToWord } from '../services/exportService';
 import { Training, GlobalQuestion, QuestionType, Contact, AppSettings, TrainingTheme, Question, GuestEntry } from '../types';
 import * as XLSX from 'xlsx';
-import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe } from 'lucide-react';
+import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe, PenTool } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import LZString from 'lz-string';
@@ -63,6 +63,8 @@ export const AdminDashboard: React.FC = () => {
   // Reports State
   const [exportDropdownId, setExportDropdownId] = useState<string | null>(null); 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [signatureConfig, setSignatureConfig] = useState({ title: '', name: '', nip: '' });
 
   // Share Modal State
   const [showShareModal, setShowShareModal] = useState(false);
@@ -119,6 +121,11 @@ export const AdminDashboard: React.FC = () => {
         super: settings.superAdminPassword || 'supersimep',
         delete: settings.deletePassword || 'adm123'
     });
+    setSignatureConfig({
+        title: settings.signatureTitle || 'Kepala Seksi Penyelenggaraan Pelatihan',
+        name: settings.signatureName || 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.',
+        nip: settings.signatureNIP || '19710124 199703 1 004'
+    });
 
     setGuestEntries(await getGuestEntries());
   };
@@ -164,6 +171,19 @@ export const AdminDashboard: React.FC = () => {
   const handleSaveSettings = async () => { await saveSettings(appSettings); setShowSettingsModal(false); refreshData(); };
   const handleSaveSecurity = async () => { const updated = { ...appSettings, adminPassword: securitySettings.admin, superAdminPassword: securitySettings.super, deletePassword: securitySettings.delete }; await saveSettings(updated); setAppSettings(updated); alert('Tersimpan.'); };
   const handleResetApplication = async () => { if (confirm('Reset Data?')) { await resetApplicationData(); refreshData(); setShowSettingsModal(false); navigate('/admin'); } };
+
+  // --- Signature Handler ---
+  const handleSaveSignature = async () => {
+    const updated = {
+        ...appSettings,
+        signatureTitle: signatureConfig.title,
+        signatureName: signatureConfig.name,
+        signatureNIP: signatureConfig.nip
+    };
+    await saveSettings(updated);
+    setAppSettings(updated);
+    setShowSignatureModal(false);
+  };
 
   // --- Printing Handlers (Async with Error Handling) ---
   const handlePrint = async (type: 'pdf'|'excel'|'word', t: Training) => {
@@ -269,7 +289,12 @@ export const AdminDashboard: React.FC = () => {
         {/* REVISED REPORTS TAB (Corrected Dropdown Refs) */}
         {activeTab === 'reports' && (
              <div className="animate-in fade-in duration-300 space-y-6">
-                <div className="mb-4"><h2 className="text-2xl font-bold text-slate-800">Laporan Akhir</h2></div>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-2xl font-bold text-slate-800">Laporan Akhir</h2>
+                    <button onClick={() => setShowSignatureModal(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 hover:border-indigo-400 transition shadow-sm">
+                        <PenTool size={16} /> Konfigurasi TTD
+                    </button>
+                </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                         <div className="md:col-span-4 relative"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Cari Pelatihan</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14}/><input type="text" value={reportSearch} onChange={e => setReportSearch(e.target.value)} placeholder="Nama pelatihan..." className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs" /></div></div>
@@ -324,6 +349,37 @@ export const AdminDashboard: React.FC = () => {
         {activeTab === 'guestbook' && (<div className="animate-in fade-in duration-300 max-w-5xl mx-auto space-y-6"><div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div><h2 className="text-2xl font-bold text-slate-800">Buku Tamu</h2><p className="text-slate-500 text-sm">Riwayat akses tamu ke menu laporan.</p></div><div className="flex items-center gap-3"><button onClick={handleToggleGuestBook} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition shadow-sm ${appSettings.isGuestBookOpen ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200' : 'bg-red-100 text-red-700 border border-red-200 hover:bg-red-200'}`}>{appSettings.isGuestBookOpen ? <Unlock size={18}/> : <Lock size={18}/>}{appSettings.isGuestBookOpen ? 'Akses Tamu DIBUKA' : 'Akses Tamu DITUTUP'}</button><button onClick={handleClearGuestBook} className="p-2.5 text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-xl hover:bg-red-50"><Trash2 size={18}/></button></div></div><div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><table className="w-full text-left text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-6 py-4 font-semibold text-slate-700">Waktu Akses</th><th className="px-6 py-4 font-semibold text-slate-700">Nama Tamu</th><th className="px-6 py-4 font-semibold text-slate-700">Instansi</th></tr></thead><tbody className="divide-y divide-slate-100">{guestEntries.length > 0 ? (guestEntries.map(g => (<tr key={g.id} className="hover:bg-slate-50/50"><td className="px-6 py-4 text-slate-500 font-mono text-xs">{new Date(g.timestamp).toLocaleString('id-ID')}</td><td className="px-6 py-4 font-bold text-slate-800">{g.name}</td><td className="px-6 py-4 text-slate-600">{g.institution}</td></tr>))) : (<tr><td colSpan={3} className="text-center py-8 text-slate-400 italic">Belum ada riwayat tamu.</td></tr>)}</tbody></table></div></div>)}
         {activeTab === 'security' && isSuperAdmin && (<div className="animate-in fade-in duration-300 max-w-2xl mx-auto space-y-6"><div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Shield className="text-amber-500"/> Pengaturan Akses & Keamanan</h2><p className="text-slate-500 text-sm">Kelola password login dan kode otorisasi sistem.</p></div><div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6"><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-700 mb-1">Password Admin (Reguler)</label><div className="relative"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.admin} onChange={e => setSecuritySettings({...securitySettings, admin: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk login sehari-hari. Default: 12345</p></div><div><label className="block text-sm font-bold text-amber-700 mb-1">Password Superadmin</label><div className="relative"><Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.super} onChange={e => setSecuritySettings({...securitySettings, super: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-amber-50"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk akses menu ini. Default: supersimep</p></div><div className="pt-2 border-t border-slate-100"><label className="block text-sm font-bold text-red-700 mb-1">Kode Otorisasi Hapus Data</label><div className="relative"><Trash2 className="absolute left-3 top-1/2 -translate-y-1/2 text-red-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.delete} onChange={e => setSecuritySettings({...securitySettings, delete: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-red-50"/></div><p className="text-[10px] text-slate-400 mt-1">Diminta saat menghapus data sensitif. Default: adm123</p></div></div><div className="flex items-center justify-between pt-4"><label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none"><input type="checkbox" checked={showSecurityPass} onChange={e => setShowSecurityPass(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>Tampilkan Karakter</label><button onClick={handleSaveSecurity} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"><Save size={18}/> Simpan Perubahan</button></div></div></div>)}
       </main>
+
+      {/* Signature Configuration Modal */}
+      {showSignatureModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2"><PenTool size={18} className="text-indigo-600"/> Konfigurasi TTD</h3>
+                    <button onClick={() => setShowSignatureModal(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <p className="text-xs text-slate-500 mb-4">Pengaturan ini akan diterapkan pada bagian tanda tangan di semua file laporan (PDF, Excel, Word).</p>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Jabatan Penandatangan</label>
+                        <input type="text" value={signatureConfig.title} onChange={e => setSignatureConfig({...signatureConfig, title: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Kepala Seksi..." />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Nama Pejabat</label>
+                        <input type="text" value={signatureConfig.name} onChange={e => setSignatureConfig({...signatureConfig, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Nama Lengkap & Gelar" />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase mb-1">NIP</label>
+                        <input type="text" value={signatureConfig.nip} onChange={e => setSignatureConfig({...signatureConfig, nip: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="19xxxx..." />
+                    </div>
+                    <div className="pt-4 flex justify-end gap-2">
+                        <button onClick={() => setShowSignatureModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-bold text-sm">Batal</button>
+                        <button onClick={handleSaveSignature} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 flex items-center gap-2"><Save size={16}/> Simpan</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* Modals (Delete, Share, Settings) - same as existing code */}
       {deleteTargetId && (<div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"><div className="p-6 text-center"><AlertCircle size={48} className="mx-auto text-red-500 mb-4" /><h3 className="text-xl font-bold text-slate-800 mb-2">Konfirmasi Hapus</h3><p className="text-slate-500 text-sm mb-4">Hapus data pelatihan ini secara permanen?</p><div className="mb-4 text-left"><label className="block text-xs font-bold text-slate-700 mb-1">Kode Otorisasi</label><div className="relative"><input type="password" value={deleteAuthInput} onChange={e => setDeleteAuthInput(e.target.value)} placeholder="Masukkan sandi..." className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" autoFocus /></div></div><div className="flex gap-3"><button onClick={() => { setDeleteTargetId(null); setDeleteAuthInput(''); }} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-semibold hover:bg-slate-200">Batal</button><button onClick={executeDelete} disabled={isDeleting} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-red-700 disabled:opacity-50">{isDeleting ? <RotateCcw size={18} className="animate-spin" /> : 'Hapus'}</button></div></div></div></div>)}

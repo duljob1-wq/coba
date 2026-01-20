@@ -61,7 +61,10 @@ const ensureDefaults = async () => {
             isGuestBookOpen: false,
             adminPassword: '12345',
             superAdminPassword: 'supersimep',
-            deletePassword: 'adm123'
+            deletePassword: 'adm123',
+            signatureTitle: 'Kepala Seksi Penyelenggaraan Pelatihan',
+            signatureName: 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.',
+            signatureNIP: '19710124 199703 1 004'
         });
 
         await batch.commit();
@@ -339,7 +342,10 @@ export const getSettings = async (): Promise<AppSettings> => {
             isGuestBookOpen: false,
             adminPassword: '12345',
             superAdminPassword: 'supersimep',
-            deletePassword: 'adm123'
+            deletePassword: 'adm123',
+            signatureTitle: 'Kepala Seksi Penyelenggaraan Pelatihan',
+            signatureName: 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.',
+            signatureNIP: '19710124 199703 1 004'
         };
     } catch (error) {
         console.error("Error getting settings:", error);
@@ -352,7 +358,10 @@ export const getSettings = async (): Promise<AppSettings> => {
             isGuestBookOpen: false,
             adminPassword: '12345',
             superAdminPassword: 'supersimep',
-            deletePassword: 'adm123'
+            deletePassword: 'adm123',
+            signatureTitle: 'Kepala Seksi Penyelenggaraan Pelatihan',
+            signatureName: 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.',
+            signatureNIP: '19710124 199703 1 004'
         };
     }
 };

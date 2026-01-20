@@ -93,4 +93,9 @@ export interface AppSettings {
   adminPassword?: string;
   superAdminPassword?: string;
   deletePassword?: string;
+
+  // Signature Settings (TTD)
+  signatureTitle?: string;
+  signatureName?: string;
+  signatureNIP?: string;
 }

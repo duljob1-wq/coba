@@ -2,10 +2,10 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
-import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel, AlignmentType, BorderStyle, PageBreak } from 'docx';
+import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel, AlignmentType, BorderStyle, PageBreak, UnderlineType } from 'docx';
 import saveAs from 'file-saver';
 import { Training, Response, QuestionType } from '../types';
-import { getResponses } from './storageService';
+import { getResponses, getSettings } from './storageService';
 
 // Helper untuk format tanggal Indonesia
 const formatDateID = (dateStr: string) => {
@@ -181,29 +181,68 @@ const getSortedFacilitatorNamesForRecap = (dataFacilitators: Record<string, Sess
     return names;
 };
 
+// --- HELPER: ADD PDF SIGNATURE ---
+const addPdfSignature = (doc: jsPDF, settings: any) => {
+    const pageHeight = doc.internal.pageSize.height;
+    // TTD Position: Bottom Right (Absolute)
+    const sigY = pageHeight - 45; 
+    const sigCenterX = 150; // Approx right center for A4
+
+    const sigTitle = settings.signatureTitle || 'Kepala Seksi Penyelenggaraan Pelatihan';
+    const sigName = settings.signatureName || 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.';
+    const sigNIP = settings.signatureNIP ? `NIP. ${settings.signatureNIP}` : '';
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(sigTitle, sigCenterX, sigY, { align: 'center' });
+    
+    doc.setFont("helvetica", "bold");
+    doc.text(sigName, sigCenterX, sigY + 25, { align: 'center' });
+    
+    // Manual Underline
+    const textWidth = doc.getTextWidth(sigName);
+    doc.line(sigCenterX - (textWidth / 2), sigY + 26, sigCenterX + (textWidth / 2), sigY + 26);
+
+    doc.setFont("helvetica", "normal");
+    doc.text(sigNIP, sigCenterX, sigY + 30, { align: 'center' });
+};
+
+// --- HELPER: HEADER INFO PDF ---
+const addPdfHeader = (doc: jsPDF, training: Training, y: number) => {
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Pelatihan: ${training.title}`, 14, y);
+    return y + 5;
+};
+
 export const exportToPDF = async (training: Training) => {
   const responses = await getResponses(training.id);
+  const settings = await getSettings(); 
   const data = processDataForExport(training, responses);
   const doc = new jsPDF();
   const timestamp = formatDateID(new Date().toISOString());
 
-  doc.setFontSize(16);
-  doc.text('Laporan Rekapitulasi Evaluasi Pelatihan', 14, 20);
-  doc.setFontSize(10);
+  // --- HALAMAN COVER / DEPAN & FASILITATOR PERTAMA ---
   
+  doc.setFontSize(16);
+  doc.setFont("helvetica", "bold");
+  doc.text('Laporan Rekapitulasi Evaluasi Pelatihan', 14, 20);
+  
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "normal");
   const titleLines = doc.splitTextToSize(`Judul: ${training.title}`, 180);
   doc.text(titleLines, 14, 28);
   
   let y = 28 + (titleLines.length * 5); 
   
-  // Clean format without parentheses
-  if (training.learningMethod) {
-      doc.text(`Metode: ${training.learningMethod}`, 14, y);
-      y += 5;
-  }
-  if (training.location) {
-      doc.text(`Lokasi: Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, 14, y);
-      y += 5;
+  let methodLocInfo = '';
+  if (training.learningMethod) methodLocInfo += `Metode Pembelajaran ${training.learningMethod} `;
+  if (training.location) methodLocInfo += `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`;
+  
+  if (methodLocInfo) {
+      const mlLines = doc.splitTextToSize(methodLocInfo.trim(), 180);
+      doc.text(mlLines, 14, y);
+      y += (mlLines.length * 5);
   }
 
   doc.text(`Periode: ${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`, 14, y);
@@ -211,16 +250,26 @@ export const exportToPDF = async (training: Training) => {
   doc.text(`Dicetak pada: ${timestamp}`, 14, y);
   y += 10;
 
+  // --- A. DETAIL FASILITATOR ---
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text('A. Evaluasi Detail Fasilitator', 14, y);
-  y += 6;
-
+  y += 2; // Spacing after section header
+  
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
-  flatSessions.forEach((session) => {
-    if (y > 240) { doc.addPage(); y = 20; }
-    
+  flatSessions.forEach((session, index) => {
+    // LOGIC: 
+    // If index 0 (First Facilitator), continue on SAME page.
+    // If index > 0, NEW page.
+    if (index > 0) {
+        doc.addPage();
+        y = 20; 
+    } else {
+        y += 5; // Extra spacing for the first one under the header
+    }
+
+    // Fac Header
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setFillColor(230, 230, 250); 
@@ -246,8 +295,8 @@ export const exportToPDF = async (training: Training) => {
         head: [['Variabel Penilaian', 'Rata-rata & Predikat']],
         body: scoreRows,
         theme: 'grid',
-        headStyles: { fillColor: [79, 70, 229], fontSize: 9 },
-        bodyStyles: { fontSize: 9 },
+        headStyles: { fillColor: [79, 70, 229], fontSize: 9, cellPadding: 1 },
+        bodyStyles: { fontSize: 9, cellPadding: 1 },
         columnStyles: { 0: { cellWidth: 120 }, 1: { fontStyle: 'bold' } },
         didParseCell: function (data) {
             if (data.row.index === scoreRows.length - 1 && data.section === 'body') {
@@ -260,31 +309,37 @@ export const exportToPDF = async (training: Training) => {
     
     y = (doc as any).lastAutoTable.finalY + 5;
 
+    // Comments Section - Ultra Compact Mode
     const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
     textQs.forEach(q => {
         const comments = session.comments[q.id];
         if (comments && comments.length > 0) {
-            if (y > 260) { doc.addPage(); y = 20; }
+            // Check space before printing header
+            if (y > 230) { doc.addPage(); y = 20; } 
             
             doc.setFont("helvetica", "bold");
             doc.setFontSize(9);
             doc.text(`Komentar - ${q.label}:`, 14, y);
-            y += 2;
+            y += 3;
 
             const commentRows = comments.map((c: string) => [`• ${c}`]);
             autoTable(doc, {
                 startY: y,
                 body: commentRows,
                 theme: 'plain',
-                styles: { fontSize: 9, cellPadding: 1, overflow: 'linebreak' },
+                // SUPER COMPACT STYLING
+                styles: { fontSize: 8, cellPadding: 0.5, overflow: 'linebreak', rowHeight: 0, valign: 'top' },
                 margin: { left: 14, right: 14 }
             });
-            y = (doc as any).lastAutoTable.finalY + 3;
+            y = (doc as any).lastAutoTable.finalY + 2;
         }
     });
-    y += 4; 
+    
+    // Add Signature on every facilitator page (Bottom Right)
+    addPdfSignature(doc, settings);
   });
 
+  // --- B. REKAPITULASI ---
   doc.addPage();
   y = 20;
   
@@ -335,8 +390,11 @@ export const exportToPDF = async (training: Training) => {
         }
       }
   });
-  y = (doc as any).lastAutoTable.finalY + 10;
+  
+  // Signature for Section B
+  addPdfSignature(doc, settings);
 
+  // --- C. PENYELENGGARAAN ---
   doc.addPage();
   y = 20;
 
@@ -380,38 +438,63 @@ export const exportToPDF = async (training: Training) => {
   procTextQs.forEach(q => {
       const comments = data.process.comments[q.id];
       if (comments && comments.length > 0) {
-          if (y > 270) { doc.addPage(); y = 20; }
+          if (y > 230) { doc.addPage(); y = 20; }
           doc.setFont("helvetica", "bold");
           doc.setFontSize(9);
           doc.text(`Komentar - ${q.label}:`, 14, y);
-          y += 2;
+          y += 3;
 
           const commentRows = comments.map((c: string) => [`• ${c}`]);
           autoTable(doc, {
               startY: y,
               body: commentRows,
               theme: 'plain',
-              styles: { fontSize: 9, cellPadding: 1 },
+              styles: { fontSize: 8, cellPadding: 0.5 },
               margin: { left: 14, right: 14 }
           });
-          y = (doc as any).lastAutoTable.finalY + 3;
+          y = (doc as any).lastAutoTable.finalY + 2;
       }
   });
+
+  // Signature for Section C
+  addPdfSignature(doc, settings);
 
   doc.save(`Laporan_SIMEP_${training.title.replace(/\s+/g, '_')}.pdf`);
 };
 
 export const exportToExcel = async (training: Training) => {
   const responses = await getResponses(training.id);
+  const settings = await getSettings(); // Fetch settings
   const data = processDataForExport(training, responses);
   const wb = XLSX.utils.book_new();
+
+  // Signature Data Rows
+  const sigTitle = settings.signatureTitle || 'Kepala Seksi Penyelenggaraan Pelatihan';
+  const sigName = settings.signatureName || 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.';
+  const sigNIP = settings.signatureNIP ? `NIP. ${settings.signatureNIP}` : '';
+  
+  const getSigRows = () => [
+      ['', '', '', ''],
+      ['', '', '', sigTitle],
+      ['', '', '', ''],
+      ['', '', '', ''],
+      ['', '', '', sigName],
+      ['', '', '', sigNIP],
+      ['', '', '', ''] // Spacer
+  ];
 
   const infoData = [
       ['Judul Pelatihan', training.title]
   ];
 
-  if (training.learningMethod) infoData.push(['Metode Pembelajaran', training.learningMethod]);
-  if (training.location) infoData.push(['Lokasi', `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`]);
+  // COMBINED METHOD & LOCATION (Single Line)
+  let methodLocStr = '';
+  if (training.learningMethod) methodLocStr += `Metode Pembelajaran ${training.learningMethod} `;
+  if (training.location) methodLocStr += `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`;
+
+  if (methodLocStr) {
+      infoData.push(['Metode & Lokasi', methodLocStr.trim()]);
+  }
 
   infoData.push(
       ['Periode', `${formatDateID(training.startDate)} s/d ${formatDateID(training.endDate)}`],
@@ -444,7 +527,10 @@ export const exportToExcel = async (training: Training) => {
               }
           });
       }
-      detailRows.push([]); 
+      
+      // Add Signature after EACH facilitator
+      detailRows.push(...getSigRows());
+      detailRows.push([]); // Spacer between facilitators
   });
 
   const detailWs = XLSX.utils.aoa_to_sheet(detailRows);
@@ -472,7 +558,10 @@ export const exportToExcel = async (training: Training) => {
 
   summaryRows.push(['', '', '', 'RATA-RATA TOTAL', grandDisplay]);
 
-  const rekapWs = XLSX.utils.aoa_to_sheet([...infoData, ['B. REKAPITULASI NILAI KESELURUHAN'], [], summaryHeader, ...summaryRows]);
+  // Add Signature to Rekap
+  const rekapFinalRows = [...infoData, ['B. REKAPITULASI NILAI KESELURUHAN'], [], summaryHeader, ...summaryRows, ...getSigRows()];
+
+  const rekapWs = XLSX.utils.aoa_to_sheet(rekapFinalRows);
   XLSX.utils.book_append_sheet(wb, rekapWs, 'B. Rekapitulasi');
 
   const procRows: any[] = [...infoData, ['C. EVALUASI PENYELENGGARAAN']];
@@ -502,6 +591,9 @@ export const exportToExcel = async (training: Training) => {
       });
   }
 
+  // Add Signature to Process
+  procRows.push(...getSigRows());
+
   const procWs = XLSX.utils.aoa_to_sheet(procRows);
   XLSX.utils.book_append_sheet(wb, procWs, 'C. Penyelenggaraan');
 
@@ -510,7 +602,33 @@ export const exportToExcel = async (training: Training) => {
 
 export const exportToWord = async (training: Training) => {
   const responses = await getResponses(training.id);
+  const settings = await getSettings(); // Fetch settings
   const data = processDataForExport(training, responses);
+
+  // Helper Signature Generator for Word
+  const createSignatureBlock = () => {
+      const sigTitle = settings.signatureTitle || 'Kepala Seksi Penyelenggaraan Pelatihan';
+      const sigName = settings.signatureName || 'MUNCUL WIYANA, S.Kep., Ns., M.Kep.';
+      const sigNIP = settings.signatureNIP ? `NIP. ${settings.signatureNIP}` : '';
+
+      return [
+          new Paragraph({
+              children: [new TextRun({ text: sigTitle })],
+              alignment: AlignmentType.RIGHT,
+              spacing: { before: 800 }
+          }),
+          new Paragraph({
+              children: [new TextRun({ text: sigName, bold: true, underline: { type: UnderlineType.SINGLE, color: '000000' } })],
+              alignment: AlignmentType.RIGHT,
+              spacing: { before: 1200 } // Approx space for signature
+          }),
+          new Paragraph({
+              children: [new TextRun({ text: sigNIP })],
+              alignment: AlignmentType.RIGHT,
+              spacing: { before: 100 }
+          })
+      ];
+  };
 
   const sections: any[] = [];
 
@@ -524,11 +642,13 @@ export const exportToWord = async (training: Training) => {
       new TextRun({ text: `Judul Pelatihan: ${training.title}`, bold: true }),
   ];
 
-  if (training.learningMethod) {
-      infoText.push(new TextRun({ text: `\nMetode Pembelajaran: ${training.learningMethod}`, break: 1 }));
-  }
-  if (training.location) {
-      infoText.push(new TextRun({ text: `\nLokasi: Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`, break: 1 }));
+  // COMBINED METHOD & LOCATION (Single Line)
+  let methodLocWord = '';
+  if (training.learningMethod) methodLocWord += `Metode Pembelajaran ${training.learningMethod} `;
+  if (training.location) methodLocWord += `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`;
+
+  if (methodLocWord) {
+      infoText.push(new TextRun({ text: `\n${methodLocWord.trim()}`, break: 1 }));
   }
 
   infoText.push(new TextRun({ text: `\nPeriode: ${formatDateID(training.startDate)} - ${formatDateID(training.endDate)}`, break: 1 }));
@@ -543,7 +663,10 @@ export const exportToWord = async (training: Training) => {
   
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
-  flatSessions.forEach((session) => {
+  flatSessions.forEach((session, idx) => {
+    // Note: For first session (idx === 0), it flows naturally after Header A.
+    // We add a PageBreak only at the end of the loop iteration.
+    
     sections.push(new Paragraph({ 
         children: [new TextRun({ text: `Nama Fasilitator: ${session.name}`, color: "4F46E5", bold: true })], 
         spacing: { before: 200 } 
@@ -596,14 +719,19 @@ export const exportToWord = async (training: Training) => {
         if (comments && comments.length > 0) {
             sections.push(new Paragraph({ text: `Komentar - ${q.label}:`, bold: true, spacing: { before: 100 } }));
             comments.forEach((c: string) => {
-                sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 } }));
+                // Compact comments in Word
+                sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 }, spacing: { after: 0 } }));
             });
         }
     });
-    sections.push(new Paragraph({ text: "", spacing: { after: 200 } })); 
+    
+    // Add Signature for THIS session
+    sections.push(...createSignatureBlock());
+
+    // Add Page Break AFTER every facilitator session to enforce "1 halaman tersendiri"
+    sections.push(new Paragraph({ children: [new PageBreak()] })); 
   });
 
-  sections.push(new Paragraph({ children: [new PageBreak()] }));
   sections.push(new Paragraph({ text: "B. Rekapitulasi Nilai Keseluruhan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
   const summaryRows = [
@@ -664,7 +792,10 @@ export const exportToWord = async (training: Training) => {
       }
   }));
 
+  // Signature for Section B
+  sections.push(...createSignatureBlock());
   sections.push(new Paragraph({ children: [new PageBreak()] }));
+
   sections.push(new Paragraph({ text: "C. Evaluasi Penyelenggaraan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
   if (training.processOrganizer && training.processOrganizer.name) {
@@ -715,10 +846,13 @@ export const exportToWord = async (training: Training) => {
       if (comments && comments.length > 0) {
           sections.push(new Paragraph({ text: `Komentar - ${q.label}:`, bold: true, spacing: { before: 100 } }));
           comments.forEach((c: string) => {
-              sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 } }));
+              sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 }, spacing: { after: 0 } }));
           });
       }
   });
+
+  // Signature for Section C
+  sections.push(...createSignatureBlock());
 
   const doc = new Document({
     sections: [{ children: sections }],
