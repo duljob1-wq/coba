@@ -105,9 +105,9 @@ export const GuestDashboard: React.FC = () => {
                                     <td className="px-6 py-4"><div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div><div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100 w-fit px-2 py-1 rounded"><Calendar size={12}/><span>{formatDateID(t.startDate)} - {formatDateID(t.endDate)}</span></div></td>
                                     <td className="px-6 py-4"><span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-xs font-bold">{responseCounts[t.id] || 0} Respon</span></td>
                                     <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-3" ref={dropdownRef}>
+                                        <div className="flex items-center justify-end gap-3">
                                             <Link to={`/admin/results/${t.id}`} className="text-emerald-600 font-bold hover:underline">Lihat Detail</Link>
-                                            <div className="relative">
+                                            <div className="relative" ref={exportDropdownId === t.id ? dropdownRef : null}>
                                                 <button onClick={() => setExportDropdownId(exportDropdownId === t.id ? null : t.id)} className="flex items-center gap-2 px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold hover:bg-slate-200 transition"><Printer size={16}/> Cetak <ChevronDown size={14} /></button>
                                                 {exportDropdownId === t.id && (
                                                     <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-[60] overflow-hidden text-left animate-in fade-in zoom-in-95">
