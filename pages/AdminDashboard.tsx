@@ -548,11 +548,9 @@ export const AdminDashboard: React.FC = () => {
             </div>
         )}
 
-        {/* ... (Rest of the component remains largely unchanged, just context continuation) ... */}
+        {/* ... Variables Tab ... */}
         {activeTab === 'variables' && (
             <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
-                 {/* ... Variables Content ... */}
-                 {/* Re-implementing Variables Tab to ensure file integrity */}
                  <div className="mb-6">
                     <h2 className="text-2xl font-bold text-slate-800">Variabel Pelatihan</h2>
                     <p className="text-slate-500 text-sm">Kelola tema dan paket pertanyaan evaluasi.</p>
@@ -936,8 +934,8 @@ export const AdminDashboard: React.FC = () => {
                                                 {exportDropdownId === t.id && (
                                                     <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-xl z-[60] overflow-hidden text-left">
                                                         <button onClick={() => { exportToPDF(t); setExportDropdownId(null); }} className="w-full text-left px-4 py-3 text-xs font-semibold hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100"><div className="w-8 h-8 bg-red-100 text-red-600 flex items-center justify-center rounded"><FileIcon size={16}/></div> PDF</button>
-                                                        <button onClick={() => { exportToExcel(t); setExportDropdownId(null); }} className="w-full text-left px-4 py-3 text-xs font-semibold hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100"><div className="w-8 h-8 bg-emerald-100 text-emerald-600 flex items-center justify-center rounded"><FileSpreadsheet size={16}/> Excel</div></button>
-                                                        <button onClick={() => { exportToWord(t); setExportDropdownId(null); }} className="w-full text-left px-4 py-3 text-xs font-semibold hover:bg-slate-50 flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 text-blue-600 flex items-center justify-center rounded"><FileText size={16}/> Word</div></button>
+                                                        <button onClick={() => { exportToExcel(t); setExportDropdownId(null); }} className="w-full text-left px-4 py-3 text-xs font-semibold hover:bg-slate-50 flex items-center gap-3 border-b border-slate-100"><div className="w-8 h-8 bg-emerald-100 text-emerald-600 flex items-center justify-center rounded"><FileSpreadsheet size={16}/></div> Excel</button>
+                                                        <button onClick={() => { exportToWord(t); setExportDropdownId(null); }} className="w-full text-left px-4 py-3 text-xs font-semibold hover:bg-slate-50 flex items-center gap-3"><div className="w-8 h-8 bg-blue-100 text-blue-600 flex items-center justify-center rounded"><FileText size={16}/></div> Word</button>
                                                     </div>
                                                 )}
                                             </div>

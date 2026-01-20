@@ -285,8 +285,8 @@ export const ResultsView: React.FC = () => {
                         <span className="text-xs font-bold text-slate-600">{training.title}</span>
                         {(training.learningMethod || training.location) && (
                             <span className="text-xs text-slate-500 mt-0.5">
-                                {training.learningMethod && `(${training.learningMethod}) `}
-                                {training.location && `(Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location})`}
+                                {training.learningMethod && `${training.learningMethod} `}
+                                {training.location && `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`}
                             </span>
                         )}
                         <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
