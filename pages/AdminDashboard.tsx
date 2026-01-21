@@ -4,7 +4,7 @@ import { getTrainings, deleteTraining, getResponses, getGlobalQuestions, saveGlo
 import { exportToPDF, exportToExcel, exportToWord } from '../services/exportService';
 import { Training, GlobalQuestion, QuestionType, Contact, AppSettings, TrainingTheme, Question, GuestEntry } from '../types';
 import * as XLSX from 'xlsx';
-import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe, PenTool } from 'lucide-react';
+import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe, PenTool, Briefcase, MapPin, Building2, User } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import LZString from 'lz-string';
@@ -12,6 +12,15 @@ import { QuestionBuilder } from '../components/QuestionBuilder';
 
 type MenuTab = 'management' | 'variables' | 'reports' | 'contacts' | 'guestbook' | 'security';
 type SettingsTab = 'training' | 'whatsapp' | 'backup' | 'reset';
+
+const COUNTRY_CODES = [
+    { code: 'IDN', dial: '+62', flag: '🇮🇩', label: 'Indonesia' },
+    { code: 'MYS', dial: '+60', flag: '🇲🇾', label: 'Malaysia' },
+    { code: 'SGP', dial: '+65', flag: '🇸🇬', label: 'Singapore' },
+    { code: 'TLS', dial: '+670', flag: '🇹🇱', label: 'Timor Leste' },
+    { code: 'BRN', dial: '+673', flag: '🇧🇳', label: 'Brunei' },
+    { code: 'OTH', dial: '+', flag: '🌐', label: 'Lainnya' }
+];
 
 export const AdminDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MenuTab>('management');
@@ -53,9 +62,15 @@ export const AdminDashboard: React.FC = () => {
 
   // Contacts State
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [newContact, setNewContact] = useState<{name: string, whatsapp: string}>({ name: '', whatsapp: '' });
+  const [newContact, setNewContact] = useState<Contact>({ id: '', name: '', whatsapp: '', jobTitle: '', unit: '', address: '' });
   const [contactSearch, setContactSearch] = useState('');
+  const [selectedCountryCode, setSelectedCountryCode] = useState('IDN'); // Default IDN
   const contactFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Contact Detail/Edit Modal State
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [showExtraFields, setShowExtraFields] = useState(false); // Toggle in Add Form
 
   // Guest Book State
   const [guestEntries, setGuestEntries] = useState<GuestEntry[]>([]);
@@ -162,10 +177,72 @@ export const AdminDashboard: React.FC = () => {
   const handleEditTheme = (theme: TrainingTheme) => { setActiveTheme({ ...theme }); setIsEditingTheme(true); };
   const handleSaveTheme = async () => { if (activeTheme && activeTheme.name) { await saveTheme(activeTheme); setActiveTheme(null); setIsEditingTheme(false); refreshData(); } else { alert("Nama tema tidak boleh kosong"); } };
   const handleDeleteTheme = async (id: string) => { if(confirm("Hapus tema ini?")) { await deleteTheme(id); refreshData(); } };
-  const handleSaveContact = async () => { if(!newContact.name) return; await saveContact({ id: uuidv4(), name: newContact.name, whatsapp: newContact.whatsapp }); setNewContact({ name: '', whatsapp: '' }); refreshData(); };
+  
+  // UPDATED: Save Contact with Phone Number Formatting and Extra Fields
+  const handleSaveContact = async () => { 
+      if(!newContact.name) return; 
+      
+      let finalWa = newContact.whatsapp.trim();
+      
+      // Auto-format: Replace 08 with 628, Remove +, etc.
+      finalWa = finalWa.replace(/[\s-]/g, '');
+      if (finalWa.startsWith('08')) {
+          finalWa = '62' + finalWa.substring(1);
+      }
+      if (finalWa.startsWith('+')) {
+          finalWa = finalWa.substring(1);
+      }
+
+      const contactToSave: Contact = {
+          id: uuidv4(),
+          name: newContact.name,
+          whatsapp: finalWa,
+          jobTitle: newContact.jobTitle,
+          unit: newContact.unit,
+          address: newContact.address
+      };
+
+      await saveContact(contactToSave); 
+      setNewContact({ id: '', name: '', whatsapp: '', jobTitle: '', unit: '', address: '' }); 
+      setShowExtraFields(false); // Reset toggle
+      refreshData(); 
+  };
+
+  const handleUpdateContact = async () => {
+      if (!selectedContact || !selectedContact.name) return;
+      
+      let finalWa = selectedContact.whatsapp.trim();
+      finalWa = finalWa.replace(/[\s-]/g, '');
+      if (finalWa.startsWith('08')) finalWa = '62' + finalWa.substring(1);
+      if (finalWa.startsWith('+')) finalWa = finalWa.substring(1);
+
+      await saveContact({ ...selectedContact, whatsapp: finalWa });
+      setShowContactModal(false);
+      setSelectedContact(null);
+      refreshData();
+  };
+
+  const openContactDetail = (c: Contact) => {
+      setSelectedContact({ ...c }); // Clone object
+      setShowContactModal(true);
+  };
+
   const handleDeleteContact = async (c: Contact) => { if (confirm(`Hapus "${c.name}"?`)) { await deleteContact(c.id); refreshData(); } };
-  const handleExportContacts = () => { const dataToExport = contacts.map(c => ({ 'Nama': c.name, 'WhatsApp': c.whatsapp })); const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(dataToExport); XLSX.utils.book_append_sheet(wb, ws, "Daftar Kontak"); XLSX.writeFile(wb, "Kontak_Fasilitator_SIMEP.xlsx"); };
-  const handleImportContacts = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (evt) => { try { const wb = XLSX.read(evt.target?.result, { type: 'binary' }); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(ws); for (const row of (data as any[])) { await saveContact({ id: uuidv4(), name: String(row['Nama']||row['nama']||''), whatsapp: String(row['WhatsApp']||'') }); } alert(`Impor Sukses.`); refreshData(); } catch (err) { alert("Gagal impor."); } }; reader.readAsBinaryString(file); if (contactFileInputRef.current) contactFileInputRef.current.value = ''; };
+  const handleExportContacts = () => { 
+      const dataToExport = contacts.map(c => ({ 
+          'Nama': c.name, 
+          'WhatsApp': c.whatsapp,
+          'Jabatan': c.jobTitle || '-',
+          'Unit Kerja': c.unit || '-',
+          'Alamat': c.address || '-'
+      })); 
+      const wb = XLSX.utils.book_new(); 
+      const ws = XLSX.utils.json_to_sheet(dataToExport); 
+      XLSX.utils.book_append_sheet(wb, ws, "Daftar Kontak"); 
+      XLSX.writeFile(wb, "Kontak_Fasilitator_SIMEP.xlsx"); 
+  };
+  
+  const handleImportContacts = (e: React.ChangeEvent<HTMLInputElement>) => { const file = e.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = async (evt) => { try { const wb = XLSX.read(evt.target?.result, { type: 'binary' }); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json(ws); for (const row of (data as any[])) { await saveContact({ id: uuidv4(), name: String(row['Nama']||row['nama']||''), whatsapp: String(row['WhatsApp']||''), jobTitle: String(row['Jabatan']||row['jabatan']||''), unit: String(row['Unit Kerja']||row['unit']||''), address: String(row['Alamat']||row['alamat']||'') }); } alert(`Impor Sukses.`); refreshData(); } catch (err) { alert("Gagal impor."); } }; reader.readAsBinaryString(file); if (contactFileInputRef.current) contactFileInputRef.current.value = ''; };
   const handleToggleGuestBook = async () => { const updated = { ...appSettings, isGuestBookOpen: !appSettings.isGuestBookOpen }; await saveSettings(updated); setAppSettings(updated); };
   const handleClearGuestBook = async () => { if(confirm("Hapus riwayat?")) { await clearGuestEntries(); refreshData(); } };
   const handleSaveSettings = async () => { await saveSettings(appSettings); setShowSettingsModal(false); refreshData(); };
@@ -198,6 +275,39 @@ export const AdminDashboard: React.FC = () => {
       }
   };
 
+  // Handler for Country Selection
+  const handleCountryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const code = e.target.value;
+      setSelectedCountryCode(code);
+      const country = COUNTRY_CODES.find(c => c.code === code);
+      if (country) {
+          // Replace content with new dial code
+          setNewContact({...newContact, whatsapp: country.dial});
+      }
+  };
+
+  // Auto-detect country when typing
+  const handleWaInput = (val: string) => {
+      setNewContact({...newContact, whatsapp: val});
+      
+      // Basic Auto Detection Logic
+      // 1. Check if starts with IDN patterns (08, 62, +62)
+      if (val.startsWith('08') || val.startsWith('62') || val.startsWith('+62')) {
+          setSelectedCountryCode('IDN');
+          return;
+      }
+      
+      // 2. Check other country codes
+      const detected = COUNTRY_CODES.find(c => {
+          const dialNoPlus = c.dial.replace('+', '');
+          return val.startsWith(c.dial) || val.startsWith(dialNoPlus);
+      });
+
+      if (detected) {
+          setSelectedCountryCode(detected.code);
+      }
+  };
+
   const formatDateID = (dateStr: string) => { if (!dateStr) return ''; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); };
 
   const filteredMgmtTrainings = trainings.filter(t => { const matchSearch = t.title.toLowerCase().includes(mgmtSearch.toLowerCase()); let matchDate = true; if (mgmtDateStart && mgmtDateEnd) { matchDate = (t.startDate <= mgmtDateEnd) && (t.endDate >= mgmtDateStart); } const matchMethod = filterMethod ? t.learningMethod === filterMethod : true; const matchLocation = filterLocation ? t.location === filterLocation : true; return matchSearch && matchDate && matchMethod && matchLocation; }).sort((a, b) => b.createdAt - a.createdAt);
@@ -206,15 +316,12 @@ export const AdminDashboard: React.FC = () => {
 
   const openShareModal = (training: Training) => { const origin = window.location.origin; const baseUrl = origin.endsWith('/') ? origin.slice(0, -1) : origin; const cleanUrl = `${baseUrl}/#/evaluate/${training.id}`; setShareData({ shortUrl: cleanUrl, fullUrl: cleanUrl, title: training.title, accessCode: training.accessCode || 'N/A' }); setCopied(false); setShareTab('link'); setShowShareModal(true); };
   const copyToClipboard = async (text: string) => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch (err) {} };
-  const getCountryCode = (num: string) => { if (num.startsWith('+60')) return 'mys'; if (num.startsWith('+65')) return 'sgp'; return 'idn'; };
-  const countryLabel = getCountryCode(newContact.whatsapp);
   const isDuplicateName = newContact.name.length > 2 && contacts.some(c => c.name.toLowerCase().includes(newContact.name.toLowerCase()));
   const isDuplicatePhone = newContact.whatsapp.length > 4 && contacts.some(c => c.whatsapp.replace(/[^0-9]/g, '') === newContact.whatsapp.replace(/[^0-9]/g, ''));
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
       <nav className="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
-          {/* ... Navbar content (abbreviated) ... */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                   <div className="flex items-center gap-3">
@@ -239,8 +346,8 @@ export const AdminDashboard: React.FC = () => {
           </div>
       </nav>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8">
-        {/* ... Management Tab ... (Unchanged logic, just ensure existing code is kept) */}
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 flex flex-col">
+        {/* ... Management Tab ... */}
         {activeTab === 'management' && (
             <div className="animate-in fade-in duration-300">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4"><div><h2 className="text-2xl font-bold text-slate-800">Manajemen Pelatihan</h2><p className="text-slate-500 text-sm">Kelola daftar pelatihan aktif anda.</p></div><Link to="/admin/create" className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl shadow-lg transition flex items-center gap-2 font-medium"><Plus size={18} /> Buat Baru</Link></div>
@@ -276,17 +383,205 @@ export const AdminDashboard: React.FC = () => {
             </div>
         )}
 
-        {/* Variables & Contacts & Guestbook & Security (Same as existing, abbreviated here but functional) */}
+        {/* ... Variables, Contacts, Reports, Guestbook, Security ... */}
+        {/* (All other tab contents remain unchanged, just ensure they are inside main) */}
         {activeTab === 'variables' && (
             <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
+                 {/* ... Variable Tab Content ... */}
                  <div className="mb-6"><h2 className="text-2xl font-bold text-slate-800">Variabel Pelatihan</h2><p className="text-slate-500 text-sm">Kelola tema dan paket pertanyaan evaluasi.</p></div>
                  <div className="flex items-center gap-2 mb-6"><button onClick={() => { setVariableSubTab('themes'); setIsEditingTheme(false); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${variableSubTab === 'themes' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}><List size={16} /> Tema Pelatihan</button><button onClick={() => setVariableSubTab('bank')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${variableSubTab === 'bank' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}><Database size={16} /> Bank Pertanyaan Global</button></div>
                  {variableSubTab === 'bank' && (<div className="animate-in fade-in"><div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8"><h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><Plus size={16} /> Tambah Variabel Global Baru</h3><div className="space-y-4"><div><label className="text-xs font-semibold text-slate-500 mb-1 block">Pertanyaan / Variabel</label><input type="text" value={newQVar.label} onChange={e => setNewQVar({...newQVar, label: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Contoh: Penguasaan Materi" /></div><div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"><div className="md:col-span-1"><label className="text-xs font-semibold text-slate-500 mb-1 block">Kategori</label><div className="relative"><select value={newQVar.category} onChange={e => setNewQVar({...newQVar, category: e.target.value as 'facilitator'|'process'})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-2 focus:ring-indigo-500 outline-none"><option value="facilitator">Evaluasi Fasilitator</option><option value="process">Evaluasi Penyelenggaraan</option></select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div></div><div className="md:col-span-1"><label className="text-xs font-semibold text-slate-500 mb-1 block">Tipe Penilaian</label><div className="relative"><select value={newQVar.type} onChange={e => setNewQVar({...newQVar, type: e.target.value as QuestionType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-2 focus:ring-indigo-500 outline-none"><option value="star">★ Bintang</option><option value="slider">⸺ Skala 100</option><option value="text">¶ Teks</option></select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div></div><div className="md:col-span-1 flex items-center h-[38px]"><label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={newQVar.isDefault} onChange={e => setNewQVar({...newQVar, isDefault: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 cursor-pointer"/><div className="flex flex-col"><span className="text-sm font-semibold text-slate-700">Jadikan Default</span><span className="text-[10px] text-slate-400 leading-none">Otomatis di pelatihan baru</span></div></label></div><div className="md:col-span-1"><button onClick={handleSaveVariable} disabled={!newQVar.label} className="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition">Tambah</button></div></div></div></div><div className="bg-white rounded-2xl shadow-sm border divide-y">{globalQuestions.map(q => (<div key={q.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 gap-4"><div className="flex-1"><p className="text-sm font-bold text-slate-800">{q.label}</p><div className="flex items-center gap-2 mt-1"><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${q.category === 'facilitator' ? 'bg-indigo-50 text-indigo-700' : 'bg-orange-50 text-orange-700'}`}>{q.category === 'facilitator' ? 'Fasilitator' : 'Penyelenggaraan'}</span>{q.isDefault && (<span className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100"><CheckCircle size={10} /> Default</span>)}</div></div><div className="flex items-center gap-3"><div className="relative"><select value={q.type} onChange={(e) => handleUpdateGlobalType(q, e.target.value as QuestionType)} className="appearance-none bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all w-32 shadow-sm"><option value="star">★ Bintang</option><option value="slider">⸺ Skala</option><option value="text">¶ Teks</option></select><div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500"><ChevronDown size={14} /></div></div><button onClick={async () => { await deleteGlobalQuestion(q.id); refreshData(); }} className="text-slate-400 hover:text-red-500 p-2 transition bg-slate-50 rounded-lg hover:bg-red-50"><Trash2 size={16}/></button></div></div>))}</div></div>)}
                  {variableSubTab === 'themes' && (<div className="animate-in fade-in">{isEditingTheme && activeTheme ? (<div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="font-bold text-slate-800">{activeTheme.name ? `Edit Tema: ${activeTheme.name}` : 'Buat Tema Baru'}</h3><button onClick={() => setIsEditingTheme(false)} className="p-1 hover:bg-slate-200 rounded-full"><X size={20}/></button></div><div className="p-6 space-y-6"><div><label className="block text-sm font-semibold text-slate-600 mb-2">Nama Tema Pelatihan</label><input type="text" value={activeTheme.name} onChange={(e) => setActiveTheme({...activeTheme, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Contoh: Pelatihan Teknis Medis"/></div><div className="grid md:grid-cols-2 gap-6"><div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><QuestionBuilder title="Variabel Fasilitator" questions={activeTheme.facilitatorQuestions} onChange={(qs) => setActiveTheme({...activeTheme, facilitatorQuestions: qs})} /></div><div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><QuestionBuilder title="Variabel Penyelenggaraan" questions={activeTheme.processQuestions} onChange={(qs) => setActiveTheme({...activeTheme, processQuestions: qs})} /></div></div><div className="pt-4 border-t border-slate-100 flex justify-end gap-3"><button onClick={() => setIsEditingTheme(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Batal</button><button onClick={handleSaveTheme} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 flex items-center gap-2"><Save size={18}/> Simpan Tema</button></div></div></div>) : (<div className="space-y-4"><button onClick={handleCreateTheme} className="w-full py-3 border-2 border-dashed border-indigo-200 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition flex items-center justify-center gap-2"><Plus size={20} /> Buat Tema Variabel Baru</button><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{themes.map(t => (<div key={t.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-300 transition shadow-sm group relative"><div className="flex justify-between items-start mb-3"><h3 className="font-bold text-slate-800 text-lg">{t.name}</h3><div className="flex gap-1"><button onClick={() => handleEditTheme(t)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded bg-slate-50"><Pencil size={16}/></button><button onClick={() => handleDeleteTheme(t.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-slate-50"><Trash2 size={16}/></button></div></div><div className="space-y-2 text-xs text-slate-500"><p className="flex items-center gap-2"><Users size={14} className="text-indigo-400"/> {t.facilitatorQuestions.length} Variabel Fasilitator</p><p className="flex items-center gap-2"><Layout size={14} className="text-orange-400"/> {t.processQuestions.length} Variabel Penyelenggaraan</p></div></div>))}</div></div>)}</div>)}
             </div>
         )}
+
+        {/* ... Contacts Tab ... */}
+        {activeTab === 'contacts' && (
+            <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-800">Manajemen Kontak</h2>
+                        <p className="text-slate-500 text-sm">Database nomor WhatsApp fasilitator untuk fitur autocomplete.</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button onClick={handleExportContacts} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center gap-2">
+                            <Download size={16}/> Export
+                        </button>
+                        <button onClick={() => contactFileInputRef.current?.click()} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center gap-2">
+                            <Upload size={16}/> Import
+                        </button>
+                        <input type="file" ref={contactFileInputRef} onChange={handleImportContacts} className="hidden" accept=".xlsx, .xls" />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    {/* Form Section */}
+                    <div className="lg:col-span-5">
+                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 sticky top-24">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <Plus size={18} className="text-indigo-600"/> Tambah Kontak
+                            </h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NAMA LENGKAP + GELAR</label>
+                                    <input 
+                                        type="text" 
+                                        value={newContact.name} 
+                                        onChange={e => setNewContact({...newContact, name: e.target.value})} 
+                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                        placeholder="Nama Fasilitator..."
+                                    />
+                                    {isDuplicateName && <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1"><AlertCircle size={10}/> Nama ini mungkin sudah ada.</p>}
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nomor WhatsApp</label>
+                                    <div className="flex gap-2">
+                                        <div className="relative shrink-0">
+                                            <select 
+                                                value={selectedCountryCode}
+                                                onChange={handleCountryChange}
+                                                className="appearance-none border border-slate-300 rounded-lg pl-3 pr-6 py-2 text-sm font-bold bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                                            >
+                                                {COUNTRY_CODES.map(c => (
+                                                    <option key={c.code} value={c.code}>{c.code}</option>
+                                                ))}
+                                            </select>
+                                            <ChevronDown size={12} className="text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"/>
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={newContact.whatsapp} 
+                                            onChange={e => handleWaInput(e.target.value)} 
+                                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
+                                            placeholder="08..."
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1">Bisa diisi 08.., 628.. atau +628... (Auto-format saat simpan)</p>
+                                    {isDuplicatePhone && <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1"><AlertCircle size={10}/> Nomor ini sudah terdaftar.</p>}
+                                </div>
+
+                                {/* Extra Information Toggle */}
+                                <div>
+                                    <button 
+                                        onClick={() => setShowExtraFields(!showExtraFields)}
+                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-2"
+                                    >
+                                        {showExtraFields ? <ChevronDown size={14} className="rotate-180"/> : <ChevronDown size={14}/>}
+                                        {showExtraFields ? 'Sembunyikan Detail Tambahan' : 'Tambah Detail (Jabatan, Unit, Alamat)'}
+                                    </button>
+                                    
+                                    {showExtraFields && (
+                                        <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jabatan</label>
+                                                <input type="text" value={newContact.jobTitle || ''} onChange={e => setNewContact({...newContact, jobTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Widyaiswara Ahli Madya..."/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unit Kerja</label>
+                                                <input type="text" value={newContact.unit || ''} onChange={e => setNewContact({...newContact, unit: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="UPT Pelkesmas..."/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Alamat</label>
+                                                <textarea value={newContact.address || ''} onChange={e => setNewContact({...newContact, address: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" placeholder="Jl. Indrapura..."/>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <button 
+                                    onClick={handleSaveContact} 
+                                    disabled={!newContact.name} 
+                                    className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Simpan Kontak
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* List Section */}
+                    <div className="lg:col-span-7 space-y-4">
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
+                            <input 
+                                type="text" 
+                                value={contactSearch} 
+                                onChange={e => setContactSearch(e.target.value)} 
+                                placeholder="Cari kontak..." 
+                                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
+                            />
+                        </div>
+
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                            {filteredContacts.length === 0 ? (
+                                <div className="p-8 text-center text-slate-400 italic">
+                                    Tidak ada kontak ditemukan.
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-slate-100">
+                                    {filteredContacts.map(c => (
+                                        <div 
+                                            key={c.id} 
+                                            className="p-4 flex items-center justify-between hover:bg-slate-50 transition group cursor-pointer"
+                                            onDoubleClick={() => openContactDetail(c)}
+                                            title="Klik 2x untuk lihat detail"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                                                    {c.name.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold text-slate-800 text-sm">{c.name}</h4>
+                                                    <div className="flex flex-col gap-0.5">
+                                                        <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
+                                                            <Phone size={10}/> {c.whatsapp || '-'}
+                                                        </p>
+                                                        {c.jobTitle && <p className="text-[10px] text-slate-400 flex items-center gap-1"><Briefcase size={10}/> {c.jobTitle}</p>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); openContactDetail(c); }} 
+                                                    className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                                    title="Edit / Detail"
+                                                >
+                                                    <Pencil size={16}/>
+                                                </button>
+                                                {c.whatsapp && (
+                                                    <a 
+                                                        href={`https://wa.me/${c.whatsapp}`} 
+                                                        target="_blank" 
+                                                        rel="noreferrer" 
+                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
+                                                        title="Chat WA"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <MessageSquare size={16}/>
+                                                    </a>
+                                                )}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteContact(c); }} 
+                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                                    title="Hapus"
+                                                >
+                                                    <Trash2 size={16}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="text-center text-xs text-slate-400">
+                            Menampilkan {filteredContacts.length} dari {contacts.length} kontak. (Klik 2x untuk detail)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
         
-        {/* REVISED REPORTS TAB (Corrected Dropdown Refs) */}
+        {/* Reports Tab */}
         {activeTab === 'reports' && (
              <div className="animate-in fade-in duration-300 space-y-6">
                 <div className="flex justify-between items-center mb-4">
@@ -295,6 +590,7 @@ export const AdminDashboard: React.FC = () => {
                         <PenTool size={16} /> Konfigurasi TTD
                     </button>
                 </div>
+                {/* ... Reports Filter & Table (Unchanged) ... */}
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                         <div className="md:col-span-4 relative"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Cari Pelatihan</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14}/><input type="text" value={reportSearch} onChange={e => setReportSearch(e.target.value)} placeholder="Nama pelatihan..." className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs" /></div></div>
@@ -347,7 +643,12 @@ export const AdminDashboard: React.FC = () => {
         )}
         {/* ... Guestbook & Security (Existing) ... */}
         {activeTab === 'guestbook' && (<div className="animate-in fade-in duration-300 max-w-5xl mx-auto space-y-6"><div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"><div><h2 className="text-2xl font-bold text-slate-800">Buku Tamu</h2><p className="text-slate-500 text-sm">Riwayat akses tamu ke menu laporan.</p></div><div className="flex items-center gap-3"><button onClick={handleToggleGuestBook} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold transition shadow-sm ${appSettings.isGuestBookOpen ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-200' : 'bg-red-100 text-red-700 border border-red-200 hover:bg-red-200'}`}>{appSettings.isGuestBookOpen ? <Unlock size={18}/> : <Lock size={18}/>}{appSettings.isGuestBookOpen ? 'Akses Tamu DIBUKA' : 'Akses Tamu DITUTUP'}</button><button onClick={handleClearGuestBook} className="p-2.5 text-slate-400 hover:text-red-500 bg-white border border-slate-200 rounded-xl hover:bg-red-50"><Trash2 size={18}/></button></div></div><div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><table className="w-full text-left text-sm"><thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-6 py-4 font-semibold text-slate-700">Waktu Akses</th><th className="px-6 py-4 font-semibold text-slate-700">Nama Tamu</th><th className="px-6 py-4 font-semibold text-slate-700">Instansi</th></tr></thead><tbody className="divide-y divide-slate-100">{guestEntries.length > 0 ? (guestEntries.map(g => (<tr key={g.id} className="hover:bg-slate-50/50"><td className="px-6 py-4 text-slate-500 font-mono text-xs">{new Date(g.timestamp).toLocaleString('id-ID')}</td><td className="px-6 py-4 font-bold text-slate-800">{g.name}</td><td className="px-6 py-4 text-slate-600">{g.institution}</td></tr>))) : (<tr><td colSpan={3} className="text-center py-8 text-slate-400 italic">Belum ada riwayat tamu.</td></tr>)}</tbody></table></div></div>)}
-        {activeTab === 'security' && isSuperAdmin && (<div className="animate-in fade-in duration-300 max-w-2xl mx-auto space-y-6"><div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Shield className="text-amber-500"/> Pengaturan Akses & Keamanan</h2><p className="text-slate-500 text-sm">Kelola password login dan kode otorisasi sistem.</p></div><div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6"><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-700 mb-1">Password Admin (Reguler)</label><div className="relative"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.admin} onChange={e => setSecuritySettings({...securitySettings, admin: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk login sehari-hari. Default: 12345</p></div><div><label className="block text-sm font-bold text-amber-700 mb-1">Password Superadmin</label><div className="relative"><Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.super} onChange={e => setSecuritySettings({...securitySettings, super: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-amber-50"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk akses menu ini. Default: supersimep</p></div><div className="pt-2 border-t border-slate-100"><label className="block text-sm font-bold text-red-700 mb-1">Kode Otorisasi Hapus Data</label><div className="relative"><Trash2 className="absolute left-3 top-1/2 -translate-y-1/2 text-red-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.delete} onChange={e => setSecuritySettings({...securitySettings, delete: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-red-50"/></div><p className="text-[10px] text-slate-400 mt-1">Diminta saat menghapus data sensitif. Default: adm123</p></div></div><div className="flex items-center justify-between pt-4"><label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none"><input type="checkbox" checked={showSecurityPass} onChange={e => setShowSecurityPass(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>Tampilkan Karakter</label><button onClick={handleSaveSecurity} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"><Save size={18}/> Simpan Perubahan</button></div></div></div>)}
+        {activeTab === 'security' && isSuperAdmin && (<div className="animate-in fade-in duration-300 max-w-2xl mx-auto space-y-6"><div><h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Shield className="text-amber-500"/> Pengaturan Akses & Keamanan</h2><p className="text-slate-500 text-sm">Kelola password login dan kode otorisasi sistem.</p></div><div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6"><div className="space-y-4"><div><label className="block text-sm font-bold text-slate-700 mb-1">Password Admin (Reguler)</label><div className="relative"><Key className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" value={securitySettings.admin} onChange={e => setSecuritySettings({...securitySettings, admin: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk login sehari-hari. Default: 12345</p></div><div><label className="block text-sm font-bold text-amber-700 mb-1">Password Superadmin</label><div className="relative"><Shield className="absolute left-3 top-1/2 -translate-y-1/2 text-amber-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.super} onChange={e => setSecuritySettings({...securitySettings, super: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-amber-50"/></div><p className="text-[10px] text-slate-400 mt-1">Digunakan untuk akses menu ini. Default: supersimep</p></div><div className="pt-2 border-t border-slate-100"><label className="block text-sm font-bold text-red-700 mb-1">Kode Otorisasi Hapus Data</label><div className="relative"><Trash2 className="absolute left-3 top-1/2 -translate-y-1/2 text-red-400" size={18}/><input type={showSecurityPass ? "text" : "password"} value={securitySettings.delete} onChange={e => setSecuritySettings({...securitySettings, delete: e.target.value})} className="w-full pl-10 pr-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 outline-none bg-red-50"/></div><p className="text-[10px] text-slate-400 mt-1">Diminta saat menghapus data sensitif. Default: adm123</p></div></div><div className="flex items-center justify-between pt-4"><label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer select-none"><input type="checkbox" checked={showSecurityPass} onChange={e => setShowSecurityPass(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500"/>Tampilkan Karakter</label><button onClick={handleSaveSecurity} className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"><Save size={18}/> Simpan Perubahan</button></div></div></div>)}
+        
+        {/* ADDED: FOOTER */}
+        <div className="mt-auto py-4 text-right">
+            <span className="text-[10px] text-slate-300 font-light italic">created by DulHid V2.3</span>
+        </div>
       </main>
 
       {/* Signature Configuration Modal */}
@@ -376,6 +677,79 @@ export const AdminDashboard: React.FC = () => {
                         <button onClick={() => setShowSignatureModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-bold text-sm">Batal</button>
                         <button onClick={handleSaveSignature} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 flex items-center gap-2"><Save size={16}/> Simpan</button>
                     </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* NEW: Contact Detail/Edit Modal */}
+      {showContactModal && selectedContact && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold">
+                            {selectedContact.name.charAt(0)}
+                        </div>
+                        <h3 className="font-bold text-slate-800">Detail Kontak</h3>
+                    </div>
+                    <button onClick={() => setShowContactModal(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
+                </div>
+                <div className="p-6 overflow-y-auto space-y-4">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><User size={12}/> Nama Lengkap + Gelar</label>
+                        <input 
+                            type="text" 
+                            value={selectedContact.name} 
+                            onChange={(e) => setSelectedContact({...selectedContact, name: e.target.value})} 
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><Phone size={12}/> WhatsApp</label>
+                        <input 
+                            type="text" 
+                            value={selectedContact.whatsapp} 
+                            onChange={(e) => setSelectedContact({...selectedContact, whatsapp: e.target.value})} 
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none" 
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Akan otomatis diformat saat disimpan.</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><Briefcase size={12}/> Jabatan</label>
+                            <input 
+                                type="text" 
+                                value={selectedContact.jobTitle || ''} 
+                                onChange={(e) => setSelectedContact({...selectedContact, jobTitle: e.target.value})} 
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="-"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><Building2 size={12}/> Unit Kerja</label>
+                            <input 
+                                type="text" 
+                                value={selectedContact.unit || ''} 
+                                onChange={(e) => setSelectedContact({...selectedContact, unit: e.target.value})} 
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
+                                placeholder="-"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><MapPin size={12}/> Alamat</label>
+                        <textarea 
+                            value={selectedContact.address || ''} 
+                            onChange={(e) => setSelectedContact({...selectedContact, address: e.target.value})} 
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-20" 
+                            placeholder="-"
+                        />
+                    </div>
+                </div>
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                    <button onClick={() => setShowContactModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-bold text-sm">Batal</button>
+                    <button onClick={handleUpdateContact} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 flex items-center gap-2"><Save size={16}/> Simpan Perubahan</button>
                 </div>
             </div>
         </div>

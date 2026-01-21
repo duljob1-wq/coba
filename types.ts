@@ -23,6 +23,9 @@ export interface Contact {
   id: string;
   name: string;
   whatsapp: string;
+  jobTitle?: string; // Jabatan
+  unit?: string;     // Unit Kerja
+  address?: string;  // Alamat
 }
 
 export interface Facilitator {

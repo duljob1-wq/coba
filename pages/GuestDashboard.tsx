@@ -87,7 +87,7 @@ export const GuestDashboard: React.FC = () => {
           </div>
       </nav>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 flex flex-col">
          <div className="mb-8 flex flex-col md:flex-row justify-between items-end gap-4">
             <div><h2 className="text-2xl font-bold text-slate-800">Laporan Evaluasi</h2><p className="text-slate-500 text-sm">Akses laporan hasil evaluasi pelatihan.</p></div>
             <div className="relative w-full md:w-64"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/><input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari pelatihan..." className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"/></div>
@@ -130,6 +130,11 @@ export const GuestDashboard: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+         </div>
+         
+         {/* ADDED: FOOTER */}
+         <div className="mt-auto py-4 text-right">
+            <span className="text-[10px] text-slate-300 font-light italic">created by DulHid V2.3</span>
          </div>
       </main>
     </div>

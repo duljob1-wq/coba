@@ -540,7 +540,10 @@ export const RespondentView: React.FC = () => {
             >
                 Kirim Evaluasi
             </button>
-            <p className="text-center text-[10px] text-slate-400 mt-4">SIMEP &copy; 2025</p>
+            <div className="text-center mt-8 pb-4 text-slate-400">
+                <p className="text-[10px] font-semibold">SIMEP_Murnajati &copy; {new Date().getFullYear()}</p>
+                <p className="text-[9px] font-mono opacity-60">V2.3</p>
+            </div>
           </div>
 
         </form>
