@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses } from '../services/storageService';
 import { Training, Response, QuestionType } from '../types';
-import { MessageSquare, Calendar, User, BookOpen, ArrowLeft, Quote, Award, BarChart2 } from 'lucide-react';
+import { MessageSquare, Calendar, BookOpen, ArrowLeft, Quote, Award, BarChart2 } from 'lucide-react';
 
 export const CommentsView: React.FC = () => {
   const { trainingId, facilitatorId } = useParams<{ trainingId: string; facilitatorId: string }>();
@@ -111,7 +111,38 @@ export const CommentsView: React.FC = () => {
       return { question: q, average: avg };
   });
 
-  // 2. Calculate Overall Average
+  // 2. Calculate Percentage Distribution (For Process View Table)
+  const calculateDistribution = (qId: string, type: QuestionType) => {
+    const counts = { k: 0, s: 0, b: 0, sb: 0, total: 0 };
+    targetResponses.forEach(r => {
+        const val = r.answers[qId];
+        if (typeof val === 'number') {
+            counts.total++;
+            if (type === 'star') {
+                if (val <= 1) counts.k++;
+                else if (val <= 3) counts.s++;
+                else if (val === 4) counts.b++;
+                else if (val === 5) counts.sb++;
+            } else {
+                if (val <= 55) counts.k++;
+                else if (val <= 75) counts.s++;
+                else if (val <= 85) counts.b++;
+                else counts.sb++;
+            }
+        }
+    });
+
+    if (counts.total === 0) return { k: '0.0', s: '0.0', b: '0.0', sb: '0.0' };
+    
+    return {
+        k: ((counts.k / counts.total) * 100).toFixed(1),
+        s: ((counts.s / counts.total) * 100).toFixed(1),
+        b: ((counts.b / counts.total) * 100).toFixed(1),
+        sb: ((counts.sb / counts.total) * 100).toFixed(1)
+    };
+  };
+
+  // 3. Calculate Overall Average
   let totalSum = 0;
   let totalCount = 0;
   let dominantType: QuestionType = 'slider';
@@ -136,7 +167,7 @@ export const CommentsView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
       <div className="bg-indigo-600 pb-20 pt-10 px-4">
-        <div className="max-w-3xl mx-auto text-white">
+        <div className="max-w-4xl mx-auto text-white">
             <div className="flex items-center gap-2 mb-4 opacity-80">
                 <Link to="/" className="hover:bg-white/20 p-1 rounded transition"><ArrowLeft size={20}/></Link>
                 <span className="text-sm font-medium tracking-wide uppercase">Hasil Evaluasi {isProcessView ? 'Penyelenggaraan' : 'Sesi'}</span>
@@ -149,7 +180,7 @@ export const CommentsView: React.FC = () => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 -mt-10 pb-20 space-y-6">
+      <div className="max-w-4xl mx-auto px-4 -mt-10 pb-20 space-y-6">
         
         {/* 1. SCORE SUMMARY CARD */}
         <div className="bg-white rounded-2xl shadow-xl border border-indigo-50 p-6 flex flex-col sm:flex-row items-center justify-between gap-6 relative overflow-hidden">
@@ -174,25 +205,60 @@ export const CommentsView: React.FC = () => {
             </div>
         </div>
 
-        {/* 2. VARIABLE BREAKDOWN */}
+        {/* 2. VARIABLE BREAKDOWN (TABLE FOR PROCESS, GRID FOR FACILITATOR) */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
                 <BarChart2 className="text-slate-400" size={20}/>
                 <h3 className="font-bold text-slate-800">Rincian Nilai Variabel</h3>
             </div>
-            <div className="p-5 grid gap-3 sm:grid-cols-2">
-                {variableStats.length > 0 ? variableStats.map((stat, idx) => (
-                    <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                        <span className="text-xs font-semibold text-slate-700 line-clamp-2 w-2/3" title={stat.question.label}>
-                            {stat.question.label}
-                        </span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-slate-800">{stat.average}</span>
-                            <div className={`w-2 h-2 rounded-full ${stat.average >= (stat.question.type === 'star' ? 3.4 : 76) ? 'bg-emerald-500' : (stat.average >= (stat.question.type === 'star' ? 1.8 : 56) ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
+            
+            {isProcessView ? (
+                // TABLE VIEW FOR PROCESS EVALUATION
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-700 border-b border-slate-200">
+                            <tr>
+                                <th className="px-4 py-3 font-bold w-10 text-center text-xs">NO</th>
+                                <th className="px-4 py-3 font-bold min-w-[200px] text-xs uppercase">Hal-Hal Yang Dievaluasi</th>
+                                <th className="px-4 py-3 font-bold text-center w-20 text-xs uppercase">Kurang</th>
+                                <th className="px-4 py-3 font-bold text-center w-20 text-xs uppercase">Sedang</th>
+                                <th className="px-4 py-3 font-bold text-center w-20 text-xs uppercase">Baik</th>
+                                <th className="px-4 py-3 font-bold text-center w-20 text-xs uppercase">Sgt.Baik</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {targetQuestions.filter(q => q.type !== 'text').map((q, idx) => {
+                                const dist = calculateDistribution(q.id, q.type);
+                                return (
+                                    <tr key={q.id} className="hover:bg-slate-50 transition">
+                                        <td className="px-4 py-3 text-center text-slate-500 font-mono text-xs">{idx + 1}</td>
+                                        <td className="px-4 py-3 text-slate-800 font-medium text-xs md:text-sm">{q.label}</td>
+                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.k}%</td>
+                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.s}%</td>
+                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.b}%</td>
+                                        <td className="px-4 py-3 text-center border-l border-slate-50 font-bold text-slate-900 text-xs">{dist.sb}%</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            ) : (
+                // GRID VIEW FOR FACILITATOR (EXISTING STYLE)
+                <div className="p-5 grid gap-3 sm:grid-cols-2">
+                    {variableStats.length > 0 ? variableStats.map((stat, idx) => (
+                        <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                            <span className="text-xs font-semibold text-slate-700 line-clamp-2 w-2/3" title={stat.question.label}>
+                                {stat.question.label}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-800">{stat.average}</span>
+                                <div className={`w-2 h-2 rounded-full ${stat.average >= (stat.question.type === 'star' ? 3.4 : 76) ? 'bg-emerald-500' : (stat.average >= (stat.question.type === 'star' ? 1.8 : 56) ? 'bg-yellow-500' : 'bg-red-500')}`}></div>
+                            </div>
                         </div>
-                    </div>
-                )) : <div className="col-span-full text-center text-slate-400 text-sm italic">Tidak ada variabel nilai.</div>}
-            </div>
+                    )) : <div className="col-span-full text-center text-slate-400 text-sm italic">Tidak ada variabel nilai.</div>}
+                </div>
+            )}
         </div>
 
         {/* 3. COMMENTS LIST */}

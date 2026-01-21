@@ -30,6 +30,38 @@ const getScoreLabel = (val: number, type: QuestionType) => {
     }
 };
 
+// HELPER: Calculate Percentage Distribution (String Output with %)
+const calculateDistributionExport = (responses: Response[], qId: string, type: QuestionType) => {
+    const counts = { k: 0, s: 0, b: 0, sb: 0, total: 0 };
+    responses.forEach(r => {
+        const val = r.answers[qId];
+        if (typeof val === 'number') {
+            counts.total++;
+            if (type === 'star') {
+                // 1=Kurang, 2&3=Sedang, 4=Baik, 5=Sangat Baik
+                if (val <= 1) counts.k++;
+                else if (val <= 3) counts.s++;
+                else if (val === 4) counts.b++;
+                else if (val === 5) counts.sb++;
+            } else { // Slider
+                if (val <= 55) counts.k++;
+                else if (val <= 75) counts.s++;
+                else if (val <= 85) counts.b++;
+                else counts.sb++;
+            }
+        }
+    });
+
+    if (counts.total === 0) return { k: '0.0%', s: '0.0%', b: '0.0%', sb: '0.0%' };
+    
+    return {
+        k: ((counts.k / counts.total) * 100).toFixed(1) + '%',
+        s: ((counts.s / counts.total) * 100).toFixed(1) + '%',
+        b: ((counts.b / counts.total) * 100).toFixed(1) + '%',
+        sb: ((counts.sb / counts.total) * 100).toFixed(1) + '%'
+    };
+};
+
 interface SessionExportData {
     name: string; 
     subject: string;
@@ -50,6 +82,7 @@ const processDataForExport = (training: Training, responses: Response[]) => {
       averages: {},
       rawAverages: {}, 
       comments: {},
+      distributions: {}, // Store distributions here
       overall: '', 
       overallVal: 0
     }
@@ -132,6 +165,9 @@ const processDataForExport = (training: Training, responses: Response[]) => {
       const avg = scores.length ? scores.reduce((a: any, b: any) => a + b, 0) / scores.length : 0;
       result.process.rawAverages[q.id] = avg;
       
+      // Calculate Distribution for Process
+      result.process.distributions[q.id] = calculateDistributionExport(procResponses, q.id, q.type);
+
       totalProcScore += avg;
       totalProcCount++;
 
@@ -207,14 +243,6 @@ const addPdfSignature = (doc: jsPDF, settings: any) => {
     doc.text(sigNIP, sigCenterX, sigY + 30, { align: 'center' });
 };
 
-// --- HELPER: HEADER INFO PDF ---
-const addPdfHeader = (doc: jsPDF, training: Training, y: number) => {
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Pelatihan: ${training.title}`, 14, y);
-    return y + 5;
-};
-
 export const exportToPDF = async (training: Training) => {
   const responses = await getResponses(training.id);
   const settings = await getSettings(); 
@@ -223,7 +251,6 @@ export const exportToPDF = async (training: Training) => {
   const timestamp = formatDateID(new Date().toISOString());
 
   // --- HALAMAN COVER / DEPAN & FASILITATOR PERTAMA ---
-  
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   doc.text('Laporan Rekapitulasi Evaluasi Pelatihan', 14, 20);
@@ -254,19 +281,16 @@ export const exportToPDF = async (training: Training) => {
   doc.setFontSize(12);
   doc.setFont("helvetica", "bold");
   doc.text('A. Evaluasi Detail Fasilitator', 14, y);
-  y += 2; // Spacing after section header
+  y += 2; 
   
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
 
   flatSessions.forEach((session, index) => {
-    // LOGIC: 
-    // If index 0 (First Facilitator), continue on SAME page.
-    // If index > 0, NEW page.
     if (index > 0) {
         doc.addPage();
         y = 20; 
     } else {
-        y += 5; // Extra spacing for the first one under the header
+        y += 5;
     }
 
     // Fac Header
@@ -309,12 +333,11 @@ export const exportToPDF = async (training: Training) => {
     
     y = (doc as any).lastAutoTable.finalY + 5;
 
-    // Comments Section - Ultra Compact Mode
+    // Comments Section
     const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
     textQs.forEach(q => {
         const comments = session.comments[q.id];
         if (comments && comments.length > 0) {
-            // Check space before printing header
             if (y > 230) { doc.addPage(); y = 20; } 
             
             doc.setFont("helvetica", "bold");
@@ -327,7 +350,6 @@ export const exportToPDF = async (training: Training) => {
                 startY: y,
                 body: commentRows,
                 theme: 'plain',
-                // SUPER COMPACT STYLING
                 styles: { fontSize: 8, cellPadding: 0.5, overflow: 'linebreak', rowHeight: 0, valign: 'top' },
                 margin: { left: 14, right: 14 }
             });
@@ -335,7 +357,6 @@ export const exportToPDF = async (training: Training) => {
         }
     });
     
-    // Add Signature on every facilitator page (Bottom Right)
     addPdfSignature(doc, settings);
   });
 
@@ -391,10 +412,9 @@ export const exportToPDF = async (training: Training) => {
       }
   });
   
-  // Signature for Section B
   addPdfSignature(doc, settings);
 
-  // --- C. PENYELENGGARAAN ---
+  // --- C. PENYELENGGARAAN (UPDATED) ---
   doc.addPage();
   y = 20;
 
@@ -410,24 +430,40 @@ export const exportToPDF = async (training: Training) => {
     y += 6;
   }
 
-  const procRows = training.processQuestions
-    .filter(q => q.type !== 'text')
-    .map(q => [q.label, data.process.averages[q.id] || '0.00 (Kurang)']);
+  // UPDATED: Proc Rows with Breakdown (No Column)
+  const procRows: any[] = [];
+  let procNo = 1;
 
-  procRows.push(['Rata-rata Keseluruhan', data.process.overall]);
+  training.processQuestions.filter(q => q.type !== 'text').forEach(q => {
+      const dist = data.process.distributions[q.id] || { k:'0.0%', s:'0.0%', b:'0.0%', sb:'0.0%' };
+      procRows.push([
+          procNo++,
+          q.label, 
+          dist.k, 
+          dist.s, 
+          dist.b, 
+          dist.sb
+      ]);
+  });
+
+  // Note: We don't put Overall Avg in this specific table structure as it's percentage based, 
+  // but we can add it as a summary row or a separate block. 
+  // Based on request, we stick to the detailed percentage table.
 
   autoTable(doc, {
     startY: y,
-    head: [['Variabel Penilaian', 'Rata-rata & Predikat']],
+    head: [['No', 'Hal-hal yang dievaluasi', 'Kurang', 'Sedang', 'Baik', 'Sgt.Baik']], // Header update
     body: procRows,
     theme: 'grid',
-    headStyles: { fillColor: [245, 158, 11] },
-    columnStyles: { 0: { cellWidth: 120 }, 1: { fontStyle: 'bold' } },
-    didParseCell: function (data) {
-        if (data.row.index === procRows.length - 1 && data.section === 'body') {
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [255, 248, 220]; 
-        }
+    headStyles: { fillColor: [255, 255, 255], textColor: [0,0,0], lineColor: [0,0,0], lineWidth: 0.1, fontSize: 9, halign: 'center', valign: 'middle' },
+    bodyStyles: { fontSize: 9, lineColor: [0,0,0], lineWidth: 0.1, textColor: [0,0,0] },
+    columnStyles: { 
+        0: { halign: 'center', cellWidth: 10 }, 
+        1: { cellWidth: 90 }, 
+        2: { halign: 'center', cellWidth: 20 },
+        3: { halign: 'center', cellWidth: 20 },
+        4: { halign: 'center', cellWidth: 20 },
+        5: { halign: 'center', cellWidth: 20 }
     },
     margin: { left: 14, right: 14 }
   });
@@ -456,7 +492,6 @@ export const exportToPDF = async (training: Training) => {
       }
   });
 
-  // Signature for Section C
   addPdfSignature(doc, settings);
 
   doc.save(`Laporan_SIMEP_${training.title.replace(/\s+/g, '_')}.pdf`);
@@ -464,7 +499,7 @@ export const exportToPDF = async (training: Training) => {
 
 export const exportToExcel = async (training: Training) => {
   const responses = await getResponses(training.id);
-  const settings = await getSettings(); // Fetch settings
+  const settings = await getSettings(); 
   const data = processDataForExport(training, responses);
   const wb = XLSX.utils.book_new();
 
@@ -480,14 +515,13 @@ export const exportToExcel = async (training: Training) => {
       ['', '', '', ''],
       ['', '', '', sigName],
       ['', '', '', sigNIP],
-      ['', '', '', ''] // Spacer
+      ['', '', '', ''] 
   ];
 
   const infoData = [
       ['Judul Pelatihan', training.title]
   ];
 
-  // COMBINED METHOD & LOCATION (Single Line)
   let methodLocStr = '';
   if (training.learningMethod) methodLocStr += `Metode Pembelajaran ${training.learningMethod} `;
   if (training.location) methodLocStr += `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`;
@@ -527,10 +561,8 @@ export const exportToExcel = async (training: Training) => {
               }
           });
       }
-      
-      // Add Signature after EACH facilitator
       detailRows.push(...getSigRows());
-      detailRows.push([]); // Spacer between facilitators
+      detailRows.push([]); 
   });
 
   const detailWs = XLSX.utils.aoa_to_sheet(detailRows);
@@ -558,12 +590,12 @@ export const exportToExcel = async (training: Training) => {
 
   summaryRows.push(['', '', '', 'RATA-RATA TOTAL', grandDisplay]);
 
-  // Add Signature to Rekap
   const rekapFinalRows = [...infoData, ['B. REKAPITULASI NILAI KESELURUHAN'], [], summaryHeader, ...summaryRows, ...getSigRows()];
 
   const rekapWs = XLSX.utils.aoa_to_sheet(rekapFinalRows);
   XLSX.utils.book_append_sheet(wb, rekapWs, 'B. Rekapitulasi');
 
+  // --- C. PENYELENGGARAAN (UPDATED with Breakdown) ---
   const procRows: any[] = [...infoData, ['C. EVALUASI PENYELENGGARAAN']];
   
   if (training.processOrganizer && training.processOrganizer.name) {
@@ -571,12 +603,18 @@ export const exportToExcel = async (training: Training) => {
   }
   
   procRows.push([]);
-  procRows.push(['Variabel', 'Nilai']);
+  // Updated Header
+  procRows.push(['No', 'Hal-hal yang dievaluasi', 'Kurang', 'Sedang', 'Baik', 'Sgt.Baik']);
   
+  let procNo = 1;
   training.processQuestions.filter(q => q.type !== 'text').forEach(q => {
-      procRows.push([q.label, data.process.averages[q.id]]);
+      const dist = data.process.distributions[q.id] || { k:'0.0%', s:'0.0%', b:'0.0%', sb:'0.0%' };
+      procRows.push([
+          procNo++,
+          q.label, 
+          dist.k, dist.s, dist.b, dist.sb
+      ]);
   });
-  procRows.push(['Rata-rata Keseluruhan', data.process.overall]);
   
   const procTextQs = training.processQuestions.filter(q => q.type === 'text');
   if (procTextQs.length > 0) {
@@ -591,7 +629,6 @@ export const exportToExcel = async (training: Training) => {
       });
   }
 
-  // Add Signature to Process
   procRows.push(...getSigRows());
 
   const procWs = XLSX.utils.aoa_to_sheet(procRows);
@@ -602,7 +639,7 @@ export const exportToExcel = async (training: Training) => {
 
 export const exportToWord = async (training: Training) => {
   const responses = await getResponses(training.id);
-  const settings = await getSettings(); // Fetch settings
+  const settings = await getSettings(); 
   const data = processDataForExport(training, responses);
 
   // Helper Signature Generator for Word
@@ -620,7 +657,7 @@ export const exportToWord = async (training: Training) => {
           new Paragraph({
               children: [new TextRun({ text: sigName, bold: true, underline: { type: UnderlineType.SINGLE, color: '000000' } })],
               alignment: AlignmentType.RIGHT,
-              spacing: { before: 1200 } // Approx space for signature
+              spacing: { before: 1200 } 
           }),
           new Paragraph({
               children: [new TextRun({ text: sigNIP })],
@@ -642,7 +679,6 @@ export const exportToWord = async (training: Training) => {
       new TextRun({ text: `Judul Pelatihan: ${training.title}`, bold: true }),
   ];
 
-  // COMBINED METHOD & LOCATION (Single Line)
   let methodLocWord = '';
   if (training.learningMethod) methodLocWord += `Metode Pembelajaran ${training.learningMethod} `;
   if (training.location) methodLocWord += `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`;
@@ -659,22 +695,16 @@ export const exportToWord = async (training: Training) => {
     spacing: { after: 400 },
   }));
 
+  // A. DETAIL FASILITATOR (Unchanged - omitted for brevity logic matches original)
   sections.push(new Paragraph({ text: "A. Evaluasi Detail Fasilitator", heading: HeadingLevel.HEADING_2 }));
-  
   const flatSessions = getFlatChronologicalSessions(data.facilitators);
-
   flatSessions.forEach((session, idx) => {
-    // Note: For first session (idx === 0), it flows naturally after Header A.
-    // We add a PageBreak only at the end of the loop iteration.
-    
     sections.push(new Paragraph({ 
         children: [new TextRun({ text: `Nama Fasilitator: ${session.name}`, color: "4F46E5", bold: true })], 
         spacing: { before: 200 } 
     }));
-    
     const sessionDateStr = session.sessionDate ? ` (${formatDateID(session.sessionDate)})` : '';
     sections.push(new Paragraph({ text: `Materi: ${session.subject}${sessionDateStr}`, bold: true, spacing: { before: 100 } }));
-
     const rows = [
         new TableRow({
             children: [
@@ -683,7 +713,6 @@ export const exportToWord = async (training: Training) => {
             ],
         }),
     ];
-
     training.facilitatorQuestions.filter(q => q.type !== 'text').forEach(q => {
         rows.push(new TableRow({
             children: [
@@ -692,14 +721,12 @@ export const exportToWord = async (training: Training) => {
             ],
         }));
     });
-
     rows.push(new TableRow({
         children: [
             new TableCell({ children: [new Paragraph({ text: "Rata-rata Keseluruhan", bold: true })] }),
             new TableCell({ children: [new Paragraph({ text: session.overall, bold: true })] }),
         ],
     }));
-
     sections.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
         rows: rows,
@@ -712,28 +739,22 @@ export const exportToWord = async (training: Training) => {
             insideVertical: { style: BorderStyle.SINGLE, size: 1 },
         }
     }));
-
     const textQs = training.facilitatorQuestions.filter(q => q.type === 'text');
     textQs.forEach(q => {
         const comments = session.comments[q.id];
         if (comments && comments.length > 0) {
             sections.push(new Paragraph({ text: `Komentar - ${q.label}:`, bold: true, spacing: { before: 100 } }));
             comments.forEach((c: string) => {
-                // Compact comments in Word
                 sections.push(new Paragraph({ text: `• ${c}`, bullet: { level: 0 }, spacing: { after: 0 } }));
             });
         }
     });
-    
-    // Add Signature for THIS session
     sections.push(...createSignatureBlock());
-
-    // Add Page Break AFTER every facilitator session to enforce "1 halaman tersendiri"
     sections.push(new Paragraph({ children: [new PageBreak()] })); 
   });
 
+  // B. REKAP (Unchanged - omitted for brevity logic matches original)
   sections.push(new Paragraph({ text: "B. Rekapitulasi Nilai Keseluruhan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
-  
   const summaryRows = [
       new TableRow({
         children: [
@@ -744,13 +765,8 @@ export const exportToWord = async (training: Training) => {
         ],
       }),
   ];
-
-  let no = 1;
-  let grandTotal = 0;
-  let grandCount = 0;
-
+  let no = 1; let grandTotal = 0; let grandCount = 0;
   const sortedNames = getSortedFacilitatorNamesForRecap(data.facilitators, training);
-
   sortedNames.forEach((name) => {
       data.facilitators[name].forEach((session: SessionExportData) => {
         summaryRows.push(new TableRow({
@@ -761,15 +777,12 @@ export const exportToWord = async (training: Training) => {
                 new TableCell({ children: [new Paragraph({ text: session.overall, bold: true })] }),
             ]
         }));
-        grandTotal += session.overallVal;
-        grandCount++;
+        grandTotal += session.overallVal; grandCount++;
       });
   });
-
   const grandAvg = grandCount > 0 ? grandTotal / grandCount : 0;
   const grandLabelType: QuestionType = grandAvg > 5 ? 'slider' : 'star';
   const grandDisplay = `${grandAvg.toFixed(2)} (${getScoreLabel(grandAvg, grandLabelType)})`;
-
   summaryRows.push(new TableRow({
       children: [
         new TableCell({ children: [new Paragraph("")] }),
@@ -778,7 +791,6 @@ export const exportToWord = async (training: Training) => {
         new TableCell({ children: [new Paragraph({ text: grandDisplay, bold: true })] }),
       ]
   }));
-
   sections.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: summaryRows,
@@ -791,41 +803,44 @@ export const exportToWord = async (training: Training) => {
           insideVertical: { style: BorderStyle.SINGLE, size: 1 },
       }
   }));
-
-  // Signature for Section B
   sections.push(...createSignatureBlock());
   sections.push(new Paragraph({ children: [new PageBreak()] }));
 
+  // --- C. PENYELENGGARAAN (UPDATED) ---
   sections.push(new Paragraph({ text: "C. Evaluasi Penyelenggaraan", heading: HeadingLevel.HEADING_2, spacing: { before: 200 } }));
   
   if (training.processOrganizer && training.processOrganizer.name) {
        sections.push(new Paragraph({ text: `Penanggung Jawab: ${training.processOrganizer.name}`, spacing: { after: 100 } }));
   }
 
+  // Updated Word Table Header
   const procRows = [
       new TableRow({
         children: [
-          new TableCell({ children: [new Paragraph({ text: "Variabel", bold: true })], width: { size: 60, type: WidthType.PERCENTAGE } }),
-          new TableCell({ children: [new Paragraph({ text: "Nilai & Predikat", bold: true })], width: { size: 40, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "No", bold: true })], width: { size: 5, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "Hal-hal yang dievaluasi", bold: true })], width: { size: 55, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "Kurang", bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "Sedang", bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "Baik", bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
+          new TableCell({ children: [new Paragraph({ text: "Sgt.Baik", bold: true })], width: { size: 10, type: WidthType.PERCENTAGE } }),
         ],
       }),
   ];
 
+  let procNo = 1;
   training.processQuestions.filter(q => q.type !== 'text').forEach(q => {
+      const dist = data.process.distributions[q.id] || { k:'0.0%', s:'0.0%', b:'0.0%', sb:'0.0%' };
       procRows.push(new TableRow({
         children: [
+          new TableCell({ children: [new Paragraph((procNo++).toString())] }),
           new TableCell({ children: [new Paragraph(q.label)] }),
-          new TableCell({ children: [new Paragraph(data.process.averages[q.id] || "0.00")] }),
+          new TableCell({ children: [new Paragraph(dist.k)] }),
+          new TableCell({ children: [new Paragraph(dist.s)] }),
+          new TableCell({ children: [new Paragraph(dist.b)] }),
+          new TableCell({ children: [new Paragraph(dist.sb)] }),
         ],
       }));
   });
-
-  procRows.push(new TableRow({
-    children: [
-      new TableCell({ children: [new Paragraph({ text: "Rata-rata Keseluruhan", bold: true })] }),
-      new TableCell({ children: [new Paragraph({ text: data.process.overall, bold: true })] }),
-    ],
-  }));
 
   sections.push(new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
@@ -851,7 +866,6 @@ export const exportToWord = async (training: Training) => {
       }
   });
 
-  // Signature for Section C
   sections.push(...createSignatureBlock());
 
   const doc = new Document({
