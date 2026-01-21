@@ -24,6 +24,15 @@ const getScoreLabel = (val: number, type: 'star' | 'slider') => {
     }
 };
 
+// HELPER: Format number for WhatsApp API (Convert 08... to 628...)
+const formatToWAGateway = (phone: string) => {
+    let p = phone.trim().replace(/[\s-]/g, '');
+    if (p.startsWith('0')) {
+        return '62' + p.substring(1);
+    }
+    return p;
+};
+
 export const checkAndSendAutoReport = async (trainingId: string, targetId: string, targetName: string, type: 'facilitator' | 'process' = 'facilitator') => {
     const training = await getTrainingById(trainingId);
     if (!training) return;
@@ -209,7 +218,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
 const sendViaFonnte = async (settings: any, target: string, message: string): Promise<boolean> => {
     try {
         const formData = new FormData();
-        formData.append('target', target);
+        formData.append('target', formatToWAGateway(target));
         formData.append('message', message);
         formData.append('countryCode', '62'); 
 

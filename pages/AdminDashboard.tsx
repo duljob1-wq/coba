@@ -184,13 +184,14 @@ export const AdminDashboard: React.FC = () => {
       
       let finalWa = newContact.whatsapp.trim();
       
-      // Auto-format: Replace 08 with 628, Remove +, etc.
+      // Auto-format: Clean spaces
       finalWa = finalWa.replace(/[\s-]/g, '');
-      if (finalWa.startsWith('08')) {
-          finalWa = '62' + finalWa.substring(1);
-      }
-      if (finalWa.startsWith('+')) {
-          finalWa = finalWa.substring(1);
+      
+      // Convert +62 or 62 to 0 for local display preference
+      if (finalWa.startsWith('+62')) {
+          finalWa = '0' + finalWa.substring(3);
+      } else if (finalWa.startsWith('62')) {
+          finalWa = '0' + finalWa.substring(2);
       }
 
       const contactToSave: Contact = {
@@ -213,8 +214,13 @@ export const AdminDashboard: React.FC = () => {
       
       let finalWa = selectedContact.whatsapp.trim();
       finalWa = finalWa.replace(/[\s-]/g, '');
-      if (finalWa.startsWith('08')) finalWa = '62' + finalWa.substring(1);
-      if (finalWa.startsWith('+')) finalWa = finalWa.substring(1);
+      
+      // Convert +62 or 62 to 0 for local display preference
+      if (finalWa.startsWith('+62')) {
+          finalWa = '0' + finalWa.substring(3);
+      } else if (finalWa.startsWith('62')) {
+          finalWa = '0' + finalWa.substring(2);
+      }
 
       await saveContact({ ...selectedContact, whatsapp: finalWa });
       setShowContactModal(false);
