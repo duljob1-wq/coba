@@ -33,7 +33,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
         if (!training.targets || training.targets.length === 0) return;
         
         // Find the specific session/facilitator row using unique targetId
-        // Note: targetId corresponds to the UUID of the specific session row in CreateTraining
         const facilitator = training.facilitators.find(f => f.id === targetId);
         
         if (!facilitator || !facilitator.whatsapp) {
@@ -43,8 +42,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
 
         const allResponses = await getResponses(trainingId);
         
-        // CRITICAL UPDATE: Filter responses by Name AND Subject to ensure multi-subject facilitators
-        // have independent counters/triggers for each subject.
         const facResponses = allResponses.filter(r => 
             r.type === 'facilitator' && 
             r.targetName === facilitator.name &&
@@ -55,8 +52,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
         console.log(`AutoReport Check [${facilitator.name} - ${facilitator.subject}]: Count ${count}, Targets: ${training.targets.join(', ')}`);
 
         if (training.targets.includes(count)) {
-            // Unique Report Key combines Session ID (targetId) and Count.
-            // Since targetId is unique per session/materi, this separates reports correctly.
             const reportKey = `${targetId}_${count}`;
             
             if (!training.reportedTargets) training.reportedTargets = {};
@@ -82,7 +77,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 }
             });
 
-            // --- NEW: Add Comment Snippets ---
+            // --- Cuplikan Pesan Peserta ---
             const textQuestions = training.facilitatorQuestions.filter(q => q.type === 'text');
             let allComments: string[] = [];
             textQuestions.forEach(q => {
@@ -96,11 +91,9 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
 
             if (shortSnippets.length > 0) {
-                // Format: "Pesan 1", "Pesan 2"
                 const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
                 message += `\n*Cuplikan Pesan Peserta :*\n${joinedSnippets}\n`;
             }
-            // ---------------------------------
 
             message += `\n*Rata-rata Keseluruhan:*\n`;
             if (overall.hasStar) {
@@ -109,7 +102,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
             if (overall.hasSlider) {
                 const label = getScoreLabel(overall.sliderAvg, 'slider');
-                // Remove /100 suffix
                 message += `📊 Skala: *${overall.sliderAvg} (${label})*\n`;
             }
 
@@ -125,11 +117,11 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             if (success) {
                 training.reportedTargets[reportKey] = true;
                 await saveTraining(training);
-                console.log(`AutoReport: SUCCESS sent to ${facilitator.name} for subject ${facilitator.subject}`);
+                console.log(`AutoReport: SUCCESS sent to ${facilitator.name}`);
             }
         }
     } 
-    // --- LOGIC FOR PROCESS REPORT (UPDATED: MULTI TARGET & FORMAT) ---
+    // --- LOGIC FOR PROCESS REPORT ---
     else if (type === 'process') {
         const pTargets = training.processTargets || (training.processTarget ? [training.processTarget] : []);
         
@@ -143,11 +135,10 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
 
         // Check if current count is one of the targets
         if (pTargets.includes(count)) {
-            // Generate Unique Key for Process Report to prevent duplicate sending
             const reportKey = `PROCESS_GENERAL_${count}`;
             
             if (!training.reportedTargets) training.reportedTargets = {};
-            if (training.reportedTargets[reportKey]) return; // Already sent for this count
+            if (training.reportedTargets[reportKey]) return; // Already sent
 
             const settings = await getSettings();
             const stats = calculateStats(procResponses, training.processQuestions);
@@ -167,7 +158,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 }
             });
 
-            // --- NEW: Add Comment Snippets (Samakan dengan Fasilitator) ---
+            // --- Cuplikan Pesan Peserta (Samakan dengan Fasilitator) ---
             const textQuestions = training.processQuestions.filter(q => q.type === 'text');
             let allComments: string[] = [];
             textQuestions.forEach(q => {
@@ -183,7 +174,6 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
                 message += `\n*Cuplikan Pesan Peserta :*\n${joinedSnippets}\n`;
             }
-            // ------------------------------------------------------------
 
             message += `\n*Rata-rata Keseluruhan:*\n`;
             if (overall.hasStar) {
@@ -192,13 +182,12 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
             if (overall.hasSlider) {
                 const label = getScoreLabel(overall.sliderAvg, 'slider');
-                // Remove /100 suffix
                 message += `📊 Skala: *${overall.sliderAvg} (${label})*\n`;
             }
             
-            // --- NEW: Add Link (Samakan dengan Fasilitator) ---
+            // --- LINK TAUTAN (Ditambahkan) ---
             const baseUrl = window.location.href.split('#')[0];
-            // Gunakan keyword 'process' sebagai ID untuk view
+            // Gunakan keyword 'process' sebagai ID khusus untuk view CommentsView
             const commentLink = `${baseUrl}#/comments/${trainingId}/process`;
 
             message += `\n\n📊 *Hasil Rekap & Pesan Responden:*\n`;
@@ -209,10 +198,9 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const success = await sendViaFonnte(settings, training.processOrganizer.whatsapp, message);
             if (success) {
                 training.reportedTargets[reportKey] = true;
-                // Also mark legacy flag for safety, though deprecated
-                training.processReported = true; 
+                training.processReported = true; // Legacy support
                 await saveTraining(training);
-                console.log(`AutoReport: SUCCESS sent to Process Organizer ${training.processOrganizer.name} for target ${count}`);
+                console.log(`AutoReport: SUCCESS sent to Process Organizer`);
             }
         }
     }
@@ -254,7 +242,6 @@ const calculateStats = (responses: any[], questions: any[]) => {
             display = `${avg}/5.0 (${label})`;
         } else {
             const label = getScoreLabel(avgVal, 'slider');
-            // Remove /100 suffix
             display = `${avg} (${label})`;
         }
         return { label: q.label, value: display };

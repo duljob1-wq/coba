@@ -28,6 +28,7 @@ export const CommentsView: React.FC = () => {
   if (!training || !facilitatorId) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500">Data tidak ditemukan.</div>;
 
   // --- LOGIC: HANDLE BOTH FACILITATOR AND PROCESS VIEW ---
+  // Jika ID adalah 'process', tampilkan data Penyelenggaraan
   const isProcessView = facilitatorId === 'process';
   
   let targetName = '';
@@ -40,6 +41,7 @@ export const CommentsView: React.FC = () => {
       // Setup for Process Evaluation
       targetName = "Evaluasi Penyelenggaraan";
       targetSubject = "Fasilitas & Layanan";
+      // Gunakan tanggal evaluasi penyelenggaraan atau tanggal akhir pelatihan
       targetDate = training.processEvaluationDate || training.endDate;
       targetResponses = responses.filter(r => r.type === 'process');
       targetQuestions = training.processQuestions;
@@ -65,7 +67,7 @@ export const CommentsView: React.FC = () => {
     return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  // Helper Score Label (Same as other views)
+  // Helper Score Label
   const getScoreLabel = (val: number, type: QuestionType) => {
       if (type === 'star') {
           if (val >= 4.2) return 'Sangat Baik';
