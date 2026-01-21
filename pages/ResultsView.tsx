@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X } from 'lucide-react';
 
 // --- HELPER FUNCTIONS (Pure functions outside component) ---
 const formatDateID = (dateStr: string) => {
@@ -102,6 +102,14 @@ interface SessionData {
     };
 }
 
+// Interface for temporary restore config
+interface RestoreConfigItem {
+    id: string;
+    label: string;
+    type: QuestionType;
+    originalInferredType: QuestionType;
+}
+
 export const ResultsView: React.FC = () => {
   const { trainingId } = useParams<{ trainingId: string }>();
   
@@ -120,6 +128,8 @@ export const ResultsView: React.FC = () => {
   // Data Recovery State
   const [showRestoredData, setShowRestoredData] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+  const [restoreConfigs, setRestoreConfigs] = useState<RestoreConfigItem[]>([]);
 
   // --- 2. EFFECT HOOKS ---
   useEffect(() => {
@@ -185,7 +195,7 @@ export const ResultsView: React.FC = () => {
 
           return {
               id: id,
-              label: `[RECOVERY] Variabel ${id.substring(0,6)}`, // Placeholder label as original label is lost
+              label: `(Data Lama) ID: ${id.substring(0,4)}...`, // Placeholder label as original label is lost
               type: inferredType
           };
       });
@@ -321,39 +331,58 @@ export const ResultsView: React.FC = () => {
       }
   };
 
-  // --- DATA RECOVERY HANDLER (PERMANENT RESTORE) ---
-  const handlePermanentRestore = async () => {
+  // --- DATA RECOVERY HANDLER 1: OPEN MODAL & PREPARE ---
+  const handleInitiateRestore = () => {
       if (!training || orphanedQuestionIds.length === 0) return;
 
-      const confirmRestore = window.confirm(
-          "Konfirmasi Pemulihan Permanen:\n\n" +
-          "Variabel yang terhapus akan ditambahkan kembali ke konfigurasi pelatihan ini secara permanen.\n\n" +
-          "CATATAN: Karena label pertanyaan asli tidak tersimpan di respon, sistem akan menggunakan label generik '[RECOVERY]'.\n\n" +
-          "Sangat disarankan untuk segera Mengubah Nama Variabel tersebut di menu 'Edit Pelatihan' agar laporan terlihat rapi."
-      );
+      // Prepare initial config with inferred types
+      const configs: RestoreConfigItem[] = orphanedQuestionIds.map(id => {
+          let inferredType: QuestionType = 'star';
+          const sample = filteredResponses.find(r => r.answers[id] !== undefined);
+          if (sample) {
+              const val = sample.answers[id];
+              if (typeof val === 'string') inferredType = 'text';
+              else if (typeof val === 'number') {
+                  inferredType = val > 5 ? 'slider' : 'star';
+              }
+          }
+          return {
+              id,
+              label: '', // Empty label forcing user to input
+              type: inferredType,
+              originalInferredType: inferredType
+          };
+      });
 
-      if (!confirmRestore) return;
+      setRestoreConfigs(configs);
+      setIsRestoreModalOpen(true);
+  };
+
+  const handleUpdateRestoreConfig = (index: number, field: keyof RestoreConfigItem, value: any) => {
+      const newConfigs = [...restoreConfigs];
+      newConfigs[index] = { ...newConfigs[index], [field]: value };
+      setRestoreConfigs(newConfigs);
+  };
+
+  // --- DATA RECOVERY HANDLER 2: EXECUTE SAVE ---
+  const handleExecuteRestore = async () => {
+      if (!training) return;
+
+      // Validate labels
+      const missingLabels = restoreConfigs.some(c => !c.label.trim());
+      if (missingLabels) {
+          alert("Mohon isi 'Nama Asli Variabel' untuk semua item sebelum menyimpan.");
+          return;
+      }
 
       setIsRestoring(true);
       try {
-          // 1. Reconstruct ghost questions
-          const restoredQuestions: Question[] = orphanedQuestionIds.map(id => {
-              let inferredType: QuestionType = 'star';
-              const sample = filteredResponses.find(r => r.answers[id] !== undefined);
-              if (sample) {
-                  const val = sample.answers[id];
-                  if (typeof val === 'string') inferredType = 'text';
-                  else if (typeof val === 'number') {
-                      inferredType = val > 5 ? 'slider' : 'star';
-                  }
-              }
-
-              return {
-                  id: id,
-                  label: `[RECOVERY] Variabel ${id.substring(0,6)}`,
-                  type: inferredType
-              };
-          });
+          // 1. Create Question Objects from Config
+          const restoredQuestions: Question[] = restoreConfigs.map(cfg => ({
+              id: cfg.id,
+              label: cfg.label,
+              type: cfg.type
+          }));
 
           // 2. Prepare update
           const updatedTraining = { ...training };
@@ -369,7 +398,8 @@ export const ResultsView: React.FC = () => {
           // 4. Update UI State
           setTraining(updatedTraining);
           setShowRestoredData(false); // Hide banner as they are now active
-          alert("Berhasil! Variabel telah dipulihkan. Mohon segera ubah nama label di menu Edit Pelatihan.");
+          setIsRestoreModalOpen(false);
+          alert("Berhasil! Variabel lama telah dikembalikan ke daftar pertanyaan.");
 
       } catch (error) {
           console.error("Failed to restore", error);
@@ -453,12 +483,12 @@ export const ResultsView: React.FC = () => {
                     
                     {showRestoredData && (
                         <button 
-                            onClick={handlePermanentRestore}
+                            onClick={handleInitiateRestore}
                             disabled={isRestoring}
                             className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-700 disabled:opacity-50"
                         >
-                            {isRestoring ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>}
-                            Simpan Permanen
+                            <Pencil size={16}/>
+                            Konfigurasi & Pulihkan
                         </button>
                     )}
                 </div>
@@ -574,7 +604,7 @@ export const ResultsView: React.FC = () => {
                                         const labelColor = getLabelColor(avg, q.type);
                                         
                                         // Visual distinction for restored data
-                                        const isRestored = q.label.includes('[RECOVERY]');
+                                        const isRestored = q.label.includes('(Data Lama)');
                                         
                                         return (
                                         <div key={q.id} className={`bg-white border rounded-lg p-2.5 shadow-sm flex flex-col h-full ${isRestored ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-100' : 'border-slate-100'}`}>
@@ -611,6 +641,88 @@ export const ResultsView: React.FC = () => {
                         </div>
                     );
                 })}
+            </div>
+        )}
+
+        {/* RESTORE CONFIGURATION MODAL */}
+        {isRestoreModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                             <div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><RefreshCw size={20}/></div>
+                             <div>
+                                <h3 className="font-bold text-slate-800">Pulihkan Variabel Penilaian</h3>
+                                <p className="text-xs text-slate-500">Beri nama label yang sesuai dengan data asli sebelum dihapus.</p>
+                             </div>
+                        </div>
+                        <button onClick={() => setIsRestoreModalOpen(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="p-6 overflow-y-auto flex-1">
+                        <div className="space-y-4">
+                            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex gap-3 text-xs text-amber-800">
+                                <AlertTriangle size={16} className="shrink-0 mt-0.5"/>
+                                <p>Sistem tidak dapat mengembalikan nama variabel secara otomatis. Mohon ketik nama yang sesuai agar data tersaji dengan benar.</p>
+                            </div>
+
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
+                                    <tr>
+                                        <th className="px-3 py-2">ID Data</th>
+                                        <th className="px-3 py-2 w-32">Tipe</th>
+                                        <th className="px-3 py-2">Nama Asli Variabel (Wajib Diisi)</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {restoreConfigs.map((cfg, idx) => (
+                                        <tr key={cfg.id} className="hover:bg-slate-50">
+                                            <td className="px-3 py-3 font-mono text-[10px] text-slate-400 select-all" title={cfg.id}>
+                                                {cfg.id.substring(0,8)}...
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <select 
+                                                    value={cfg.type} 
+                                                    onChange={(e) => handleUpdateRestoreConfig(idx, 'type', e.target.value)}
+                                                    className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"
+                                                >
+                                                    <option value="star">★ Bintang</option>
+                                                    <option value="slider">⸺ Skala</option>
+                                                    <option value="text">¶ Teks</option>
+                                                </select>
+                                                {cfg.type !== cfg.originalInferredType && (
+                                                    <div className="text-[10px] text-amber-600 mt-1">Terdeteksi: {cfg.originalInferredType}</div>
+                                                )}
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <input 
+                                                    type="text" 
+                                                    value={cfg.label} 
+                                                    onChange={(e) => handleUpdateRestoreConfig(idx, 'label', e.target.value)}
+                                                    className={`w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 ${!cfg.label ? 'border-red-300 ring-red-100 focus:ring-red-200' : 'border-slate-300 focus:ring-indigo-200'}`}
+                                                    placeholder="Ketik Pertanyaan/Variabel..."
+                                                    autoFocus={idx === 0}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                        <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-bold text-sm">Batal</button>
+                        <button 
+                            onClick={handleExecuteRestore} 
+                            disabled={isRestoring} 
+                            className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isRestoring ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>}
+                            Pulihkan & Simpan Permanen
+                        </button>
+                    </div>
+                </div>
             </div>
         )}
 
