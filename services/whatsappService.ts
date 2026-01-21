@@ -202,7 +202,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             const commentLink = `${baseUrl}#/comments/${trainingId}/process`;
 
             message += `\n\n📊 *Hasil Rekap & Pesan Responden:*\n`;
-            message += `Lihat rekapitulasi nilai dan baca seluruh pesan secara real time melalui tautan berikut :\n${commentLink}`;
+            message += `Lihat rekapitulasi nilai dan baca seluruh pesan secara real time dari responden untuk evaluasi ini melalui tautan berikut :\n${commentLink}`;
             
             message += `\n\n${settings.waFooter}`;
 
