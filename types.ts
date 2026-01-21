@@ -63,8 +63,9 @@ export interface Training {
 
   // Process Automation
   processOrganizer?: Contact; // Penanggung Jawab Penyelenggaraan
-  processTarget?: number; // Target jumlah untuk lapor WA
-  processReported?: boolean; // Status terkirim
+  processTargets?: number[]; // Multi-targets for process
+  processTarget?: number; // Deprecated (Single target)
+  processReported?: boolean; // Deprecated (Single flag)
 }
 
 export interface Response {

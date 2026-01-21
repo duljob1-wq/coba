@@ -32,8 +32,7 @@ export const CreateTraining: React.FC = () => {
   const [currentAccessCode, setCurrentAccessCode] = useState<string>('');
   const [createdAt, setCreatedAt] = useState<number>(Date.now());
   const [currentReportedTargets, setCurrentReportedTargets] = useState<Record<string, boolean>>({});
-  const [currentProcessReported, setCurrentProcessReported] = useState<boolean>(false);
-
+  
   // Facilitators
   const [facilitators, setFacilitators] = useState<Facilitator[]>([]);
   
@@ -85,7 +84,8 @@ export const CreateTraining: React.FC = () => {
   // Process Automation
   const [processOrganizerName, setProcessOrganizerName] = useState('');
   const [processOrganizerWa, setProcessOrganizerWa] = useState('');
-  const [processTarget, setProcessTarget] = useState<string>('');
+  const [processTargets, setProcessTargets] = useState<number[]>([]); // New Multi Target
+  const [newProcessTargetInput, setNewProcessTargetInput] = useState(''); // New Input
   const [showProcessSuggestions, setShowProcessSuggestions] = useState(false);
 
   // Helper Date Today (Local YYYY-MM-DD)
@@ -164,8 +164,12 @@ export const CreateTraining: React.FC = () => {
                 setProcessOrganizerName(data.processOrganizer.name);
                 setProcessOrganizerWa(data.processOrganizer.whatsapp);
             }
-            if (data.processTarget) setProcessTarget(data.processTarget.toString());
-            setCurrentProcessReported(data.processReported || false);
+            // Load Process Targets (New Array) or fallback to old Single Target
+            if (data.processTargets && data.processTargets.length > 0) {
+                setProcessTargets(data.processTargets);
+            } else if (data.processTarget) {
+                setProcessTargets([data.processTarget]);
+            }
 
             setCurrentId(data.id);
             setCurrentAccessCode(data.accessCode);
@@ -313,8 +317,14 @@ export const CreateTraining: React.FC = () => {
   const saveEditSession = () => { if (!editingSessionId || !editSessionSubject || !editSessionDate) return; setFacilitators(facilitators.map(f => f.id === editingSessionId ? { ...f, subject: editSessionSubject, sessionDate: editSessionDate, sessionStartTime: editSessionTime || undefined } : f)); setEditingSessionId(null); };
   const cancelEditSession = () => { setEditingSessionId(null); };
   const toggleSessionLock = (id: string, currentIsOpen: boolean | undefined) => { setFacilitators(facilitators.map(f => { if (f.id === id) { let nextStatus: boolean | undefined; if (currentIsOpen === undefined) nextStatus = false; else if (currentIsOpen === false) nextStatus = true; else nextStatus = undefined; return { ...f, isOpen: nextStatus }; } return f; })); };
+  
+  // Target Handlers
   const addTarget = () => { const val = parseInt(newTargetInput); if (!isNaN(val) && val > 0 && !targets.includes(val)) { setTargets([...targets, val].sort((a,b) => a - b)); setNewTargetInput(''); } };
   const removeTarget = (val: number) => setTargets(targets.filter(t => t !== val));
+
+  // Process Target Handlers
+  const addProcessTarget = () => { const val = parseInt(newProcessTargetInput); if (!isNaN(val) && val > 0 && !processTargets.includes(val)) { setProcessTargets([...processTargets, val].sort((a,b) => a - b)); setNewProcessTargetInput(''); } };
+  const removeProcessTarget = (val: number) => setProcessTargets(processTargets.filter(t => t !== val));
 
   const handleSave = async () => {
     const existingTrainings = await getTrainings();
@@ -330,7 +340,8 @@ export const CreateTraining: React.FC = () => {
       accessCode: currentAccessCode || Math.random().toString(36).substring(2, 7).toUpperCase(),
       title, description, startDate, endDate, processEvaluationDate: processDate || endDate, 
       facilitators, facilitatorQuestions, processQuestions, createdAt: createdAt, targets: targets, reportedTargets: currentReportedTargets,
-      processOrganizer: pOrganizer, processTarget: processTarget ? parseInt(processTarget) : undefined, processReported: currentProcessReported,
+      processOrganizer: pOrganizer, 
+      processTargets: processTargets, // Save new array
       learningMethod: useMethod ? learningMethod : undefined,
       location: useLocation ? location : undefined,
       participantLimit: participantLimit ? parseInt(participantLimit) : undefined
@@ -369,7 +380,7 @@ export const CreateTraining: React.FC = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                     <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
-                            <input type="checkbox" checked={useMethod} onChange={e => setUseMethod(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" disabled={step === 2}/>
+                            <input type="checkbox" checked={useMethod} onChange={e => setUseMethod(e.target.value)} className="rounded text-indigo-600 focus:ring-indigo-500" disabled={step === 2}/>
                             <span className="text-sm font-bold text-slate-700 flex items-center gap-2"><Monitor size={14}/> Tambah Metode Pembelajaran</span>
                         </label>
                         {useMethod && (
@@ -382,7 +393,7 @@ export const CreateTraining: React.FC = () => {
                     </div>
                     <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
-                            <input type="checkbox" checked={useLocation} onChange={e => setUseLocation(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" disabled={step === 2}/>
+                            <input type="checkbox" checked={useLocation} onChange={e => setUseLocation(e.target.value)} className="rounded text-indigo-600 focus:ring-indigo-500" disabled={step === 2}/>
                             <span className="text-sm font-bold text-slate-700 flex items-center gap-2"><MapPin size={14}/> Di UPT Pelkesmas Kampus...</span>
                         </label>
                         {useLocation && (
@@ -569,7 +580,30 @@ export const CreateTraining: React.FC = () => {
                                 <div className="md:col-span-2 border-t border-orange-200 my-1"></div>
                                 <div className="relative"><label className="block text-xs font-bold text-orange-800 uppercase mb-1">Nama Penanggung Jawab</label><input type="text" value={processOrganizerName} onChange={(e) => handleProcessOrganizerInput(e.target.value)} onBlur={() => setTimeout(() => setShowProcessSuggestions(false), 200)} placeholder="Cari Kontak atau Tulis Manual..." className="w-full border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none" />{showProcessSuggestions && processOrganizerName && filteredProcessContacts.length > 0 && (<ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">{filteredProcessContacts.map(c => (<li key={c.id} onClick={() => selectProcessContact(c)} className="px-3 py-2 text-sm text-slate-700 hover:bg-orange-50 hover:text-orange-700 cursor-pointer border-b border-slate-50 last:border-0 transition-colors">{c.name}</li>))}</ul>)}</div>
                                 <div><label className="block text-xs font-bold text-orange-800 uppercase mb-1">WhatsApp (Manual/Auto)</label><input type="text" value={processOrganizerWa} onChange={(e) => setProcessOrganizerWa(e.target.value)} placeholder="Contoh: 62812345678" className="w-full border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none bg-white" /></div>
-                                <div className="md:col-span-2"><label className="block text-xs font-bold text-orange-800 uppercase mb-1">Target Laporan (WA)</label><div className="flex items-center gap-2"><input type="number" value={processTarget} onChange={(e) => setProcessTarget(e.target.value)} placeholder="Jml Responden" className="w-32 border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none" /><span className="text-xs text-orange-600">Laporan otomatis dikirim ke WA Penanggung Jawab saat target tercapai.</span></div></div>
+                                
+                                <div className="md:col-span-2">
+                                    <label className="block text-xs font-bold text-orange-800 uppercase mb-1">Target Laporan (WA)</label>
+                                    <div className="flex gap-2 mb-2">
+                                        <input 
+                                            type="number" 
+                                            value={newProcessTargetInput} 
+                                            onChange={(e) => setNewProcessTargetInput(e.target.value)} 
+                                            placeholder="Jml Responden" 
+                                            className="w-32 border border-orange-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-orange-500 outline-none" 
+                                        />
+                                        <button onClick={addProcessTarget} className="bg-orange-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold">Tambah</button>
+                                        <span className="text-xs text-orange-600 self-center ml-2">Laporan otomatis dikirim saat target tercapai.</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {processTargets.length === 0 && <span className="text-xs text-orange-400 italic">Belum ada target laporan.</span>}
+                                        {processTargets.map(t => (
+                                            <div key={t} className="bg-white border border-orange-200 text-orange-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">
+                                                Target: {t} Orang
+                                                <button onClick={() => removeProcessTarget(t)} className="hover:text-red-500"><X size={12}/></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                             <QuestionBuilder title="B. Evaluasi Penyelenggaraan" questions={processQuestions} onChange={setProcessQuestions} />
                         </div>

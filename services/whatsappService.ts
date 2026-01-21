@@ -129,20 +129,26 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
         }
     } 
-    // --- LOGIC FOR PROCESS REPORT ---
+    // --- LOGIC FOR PROCESS REPORT (UPDATED: MULTI TARGET) ---
     else if (type === 'process') {
-        if (!training.processTarget || !training.processOrganizer || !training.processOrganizer.whatsapp) return;
+        const pTargets = training.processTargets || (training.processTarget ? [training.processTarget] : []);
         
-        // Check if already sent (Process report is sent ONLY ONCE when target reached)
-        if (training.processReported) return;
-
+        if (pTargets.length === 0 || !training.processOrganizer || !training.processOrganizer.whatsapp) return;
+        
         const allResponses = await getResponses(trainingId);
         const procResponses = allResponses.filter(r => r.type === 'process');
         const count = procResponses.length;
 
-        console.log(`AutoReport Process Check: Count ${count}, Target: ${training.processTarget}`);
+        console.log(`AutoReport Process Check: Count ${count}, Targets: ${pTargets.join(', ')}`);
 
-        if (count >= training.processTarget) {
+        // Check if current count is one of the targets
+        if (pTargets.includes(count)) {
+            // Generate Unique Key for Process Report to prevent duplicate sending
+            const reportKey = `PROCESS_GENERAL_${count}`;
+            
+            if (!training.reportedTargets) training.reportedTargets = {};
+            if (training.reportedTargets[reportKey]) return; // Already sent for this count
+
             const settings = await getSettings();
             const stats = calculateStats(procResponses, training.processQuestions);
             const overall = calculateOverallStats(procResponses, training.processQuestions);
@@ -176,9 +182,11 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
 
             const success = await sendViaFonnte(settings, training.processOrganizer.whatsapp, message);
             if (success) {
-                training.processReported = true;
+                training.reportedTargets[reportKey] = true;
+                // Also mark legacy flag for safety, though deprecated
+                training.processReported = true; 
                 await saveTraining(training);
-                console.log(`AutoReport: SUCCESS sent to Process Organizer ${training.processOrganizer.name}`);
+                console.log(`AutoReport: SUCCESS sent to Process Organizer ${training.processOrganizer.name} for target ${count}`);
             }
         }
     }
