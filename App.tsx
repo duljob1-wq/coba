@@ -14,10 +14,23 @@ import { saveTraining, getTrainingByCode } from './services/storageService';
 import { Training } from './types';
 import LZString from 'lz-string';
 
-// Protected Route Wrapper
+// Protected Route Wrapper (Admin Only - Write Access)
 const ProtectedRoute = ({ children }: { children?: React.ReactNode }) => {
   const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
   return isAdmin ? <>{children}</> : <Navigate to="/admin" replace />;
+};
+
+// NEW: Protected Report Route (Admin OR Guest - Read Access)
+const ProtectedReportRoute = ({ children }: { children?: React.ReactNode }) => {
+  const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+  const isGuest = sessionStorage.getItem('isGuest') === 'true';
+  
+  if (isAdmin || isGuest) {
+      return <>{children}</>;
+  }
+  
+  // Jika bukan admin dan bukan tamu, lempar ke login tamu
+  return <Navigate to="/guest" replace />;
 };
 
 // Landing Page (Dual Portal)
@@ -229,10 +242,12 @@ const App: React.FC = () => {
             <CreateTraining />
           </ProtectedRoute>
         } />
+        
+        {/* MODIFIED: Use ProtectedReportRoute instead of ProtectedRoute */}
         <Route path="/admin/results/:trainingId" element={
-          <ProtectedRoute>
+          <ProtectedReportRoute>
             <ResultsView />
-          </ProtectedRoute>
+          </ProtectedReportRoute>
         } />
 
         <Route path="/evaluate/:trainingId" element={<RespondentView />} />

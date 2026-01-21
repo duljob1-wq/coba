@@ -153,6 +153,9 @@ export const ResultsView: React.FC = () => {
   const [responses, setResponses] = useState<Response[]>([]);
   const [activeTab, setActiveTab] = useState<'facilitator' | 'process'>('facilitator');
 
+  // GUEST CHECK
+  const isGuest = sessionStorage.getItem('isGuest') === 'true';
+
   // Delete Session State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [targetToDelete, setTargetToDelete] = useState<string | null>(null);
@@ -323,7 +326,7 @@ export const ResultsView: React.FC = () => {
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start gap-4">
-                <Link to="/admin/dashboard" className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition mt-1">
+                <Link to={isGuest ? "/guest/dashboard" : "/admin/dashboard"} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition mt-1">
                     <ArrowLeft size={20} />
                 </Link>
                 <div>
@@ -345,13 +348,17 @@ export const ResultsView: React.FC = () => {
             </div>
             
             <div className="flex items-center gap-3 self-start md:self-center">
-                 <button
-                    onClick={() => { setIsManageMode(!isManageMode); setSelectedVarIds(new Set()); }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${isManageMode ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                >
-                    <Settings2 size={16}/>
-                    {isManageMode ? 'Batal Kelola' : 'Kelola Variabel'}
-                </button>
+                 {/* HIDE MANAGE VARIABLES FOR GUEST */}
+                 {!isGuest && (
+                     <button
+                        onClick={() => { setIsManageMode(!isManageMode); setSelectedVarIds(new Set()); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${isManageMode ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        <Settings2 size={16}/>
+                        {isManageMode ? 'Batal Kelola' : 'Kelola Variabel'}
+                    </button>
+                 )}
+                
                 <div className="bg-slate-100 p-1 rounded-lg flex gap-1">
                     <button
                         onClick={() => { setActiveTab('facilitator'); setShowRestoredData(false); }}
@@ -372,8 +379,8 @@ export const ResultsView: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
-        {/* --- RECOVERY BANNER --- */}
-        {orphanedQuestionIds.length > 0 && (
+        {/* --- RECOVERY BANNER (HIDE FOR GUEST) --- */}
+        {orphanedQuestionIds.length > 0 && !isGuest && (
             <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 shadow-sm">
                 <div className="flex items-start gap-3">
                     <div className="bg-amber-100 p-2 rounded-full text-amber-600 shrink-0">
@@ -448,7 +455,8 @@ export const ResultsView: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
-                                {activeTab === 'facilitator' && (<button onClick={() => handleInitiateDelete(session.name)} className="p-1.5 text-slate-400 hover:text-red-500 bg-white border border-slate-200 hover:bg-red-50 rounded transition-colors" title="Hapus Nilai Fasilitator Ini"><Trash2 size={16}/></button>)}
+                                {/* HIDE DELETE BUTTON FOR GUEST */}
+                                {activeTab === 'facilitator' && !isGuest && (<button onClick={() => handleInitiateDelete(session.name)} className="p-1.5 text-slate-400 hover:text-red-500 bg-white border border-slate-200 hover:bg-red-50 rounded transition-colors" title="Hapus Nilai Fasilitator Ini"><Trash2 size={16}/></button>)}
                              </div>
 
                              {/* Session Details */}
@@ -546,7 +554,7 @@ export const ResultsView: React.FC = () => {
         )}
 
         {/* FLOATING ACTION BAR FOR DELETE VARIABLES */}
-        {isManageMode && (
+        {isManageMode && !isGuest && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border border-slate-200 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 z-40 animate-in slide-in-from-bottom-6">
                 <span className="text-sm font-bold text-slate-700">{selectedVarIds.size} Dipilih</span>
                 <div className="h-6 w-px bg-slate-200"></div>
