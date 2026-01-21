@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square } from 'lucide-react';
 
 // --- HELPER FUNCTIONS (Pure functions outside component) ---
 const formatDateID = (dateStr: string) => {
@@ -118,12 +118,18 @@ export const ResultsView: React.FC = () => {
   const [responses, setResponses] = useState<Response[]>([]);
   const [activeTab, setActiveTab] = useState<'facilitator' | 'process'>('facilitator');
 
-  // Delete State
+  // Delete Session State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [targetToDelete, setTargetToDelete] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [sysDeletePass, setSysDeletePass] = useState('adm123'); 
+
+  // Variable Management State
+  const [isManageMode, setIsManageMode] = useState(false);
+  const [selectedVarIds, setSelectedVarIds] = useState<Set<string>>(new Set());
+  const [isVarDeleteModalOpen, setIsVarDeleteModalOpen] = useState(false);
+  const [varDeletePassword, setVarDeletePassword] = useState('');
 
   // Data Recovery State
   const [showRestoredData, setShowRestoredData] = useState(false);
@@ -331,6 +337,58 @@ export const ResultsView: React.FC = () => {
       }
   };
 
+  // --- VARIABLE MANAGEMENT HANDLERS ---
+  const handleToggleSelectVariable = (id: string) => {
+      const newSet = new Set(selectedVarIds);
+      if (newSet.has(id)) {
+          newSet.delete(id);
+      } else {
+          newSet.add(id);
+      }
+      setSelectedVarIds(newSet);
+  };
+
+  const handleDeleteVariablesConfirm = async () => {
+    if (varDeletePassword !== sysDeletePass) {
+        alert("Kata sandi salah!");
+        return;
+    }
+
+    if (!training) return;
+
+    setIsDeleting(true);
+    try {
+        const updatedTraining = { ...training };
+        
+        // Remove selected IDs from appropriate array
+        if (activeTab === 'facilitator') {
+            updatedTraining.facilitatorQuestions = updatedTraining.facilitatorQuestions.filter(
+                q => !selectedVarIds.has(q.id)
+            );
+        } else {
+            updatedTraining.processQuestions = updatedTraining.processQuestions.filter(
+                q => !selectedVarIds.has(q.id)
+            );
+        }
+
+        await saveTraining(updatedTraining);
+        setTraining(updatedTraining);
+        
+        // Reset states
+        setIsVarDeleteModalOpen(false);
+        setIsManageMode(false);
+        setSelectedVarIds(new Set());
+        setVarDeletePassword('');
+
+    } catch (error) {
+        console.error("Failed to delete variables", error);
+        alert("Gagal menghapus variabel.");
+    } finally {
+        setIsDeleting(false);
+    }
+  };
+
+
   // --- DATA RECOVERY HANDLER 1: OPEN MODAL & PREPARE ---
   const handleInitiateRestore = () => {
       if (!training || orphanedQuestionIds.length === 0) return;
@@ -364,7 +422,7 @@ export const ResultsView: React.FC = () => {
       setRestoreConfigs(newConfigs);
   };
 
-  // --- REORDERING HANDLERS ---
+  // --- REORDERING & REMOVING HANDLERS ---
   const handleMoveUp = (index: number) => {
       if (index === 0) return;
       const newConfigs = [...restoreConfigs];
@@ -377,6 +435,14 @@ export const ResultsView: React.FC = () => {
       const newConfigs = [...restoreConfigs];
       [newConfigs[index], newConfigs[index + 1]] = [newConfigs[index + 1], newConfigs[index]];
       setRestoreConfigs(newConfigs);
+  };
+
+  const handleRemoveRestoreConfig = (index: number) => {
+      if(confirm("Hapus variabel ini dari daftar pemulihan? Data tidak akan dikembalikan.")) {
+          const newConfigs = [...restoreConfigs];
+          newConfigs.splice(index, 1);
+          setRestoreConfigs(newConfigs);
+      }
   };
 
   // --- DATA RECOVERY HANDLER 2: EXECUTE SAVE ---
@@ -428,7 +494,7 @@ export const ResultsView: React.FC = () => {
   if (!training) return <div className="p-8 text-center text-slate-500">Memuat Laporan...</div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans pb-12">
+    <div className="min-h-screen bg-slate-50 font-sans pb-24">
       {/* Header */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
           <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -454,19 +520,28 @@ export const ResultsView: React.FC = () => {
                 </div>
             </div>
             
-            <div className="bg-slate-100 p-1 rounded-lg flex gap-1 self-start md:self-center">
-                <button
-                    onClick={() => { setActiveTab('facilitator'); setShowRestoredData(false); }}
-                    className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'facilitator' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            <div className="flex items-center gap-3 self-start md:self-center">
+                 <button
+                    onClick={() => { setIsManageMode(!isManageMode); setSelectedVarIds(new Set()); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${isManageMode ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
                 >
-                    Fasilitator
+                    <Settings2 size={16}/>
+                    {isManageMode ? 'Batal Kelola' : 'Kelola Variabel'}
                 </button>
-                <button
-                    onClick={() => { setActiveTab('process'); setShowRestoredData(false); }}
-                    className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'process' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                    Penyelenggaraan
-                </button>
+                <div className="bg-slate-100 p-1 rounded-lg flex gap-1">
+                    <button
+                        onClick={() => { setActiveTab('facilitator'); setShowRestoredData(false); }}
+                        className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'facilitator' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Fasilitator
+                    </button>
+                    <button
+                        onClick={() => { setActiveTab('process'); setShowRestoredData(false); }}
+                        className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'process' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Penyelenggaraan
+                    </button>
+                </div>
             </div>
           </div>
       </div>
@@ -621,9 +696,26 @@ export const ResultsView: React.FC = () => {
                                         // Visual distinction for restored data
                                         const isRestored = q.label.includes('(Data Lama)');
                                         
+                                        // Variable Management Selection
+                                        const isSelected = selectedVarIds.has(q.id);
+
                                         return (
-                                        <div key={q.id} className={`bg-white border rounded-lg p-2.5 shadow-sm flex flex-col h-full ${isRestored ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-100' : 'border-slate-100'}`}>
-                                            <div className="flex items-start justify-between mb-1.5">
+                                        <div 
+                                            key={q.id} 
+                                            className={`bg-white border rounded-lg p-2.5 shadow-sm flex flex-col h-full relative transition-all ${isRestored ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-100' : 'border-slate-100'} ${isManageMode && !isRestored ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md' : ''} ${isSelected ? 'ring-2 ring-red-500 border-red-500 bg-red-50' : ''}`}
+                                            onClick={() => { if(isManageMode && !isRestored) handleToggleSelectVariable(q.id); }}
+                                        >
+                                            {/* CHECKBOX OVERLAY */}
+                                            {isManageMode && !isRestored && (
+                                                <div className="absolute top-2 right-2 z-10">
+                                                    {isSelected ? 
+                                                        <CheckSquare className="text-red-500 fill-white" size={20}/> : 
+                                                        <Square className="text-slate-300" size={20}/>
+                                                    }
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-start justify-between mb-1.5 pr-6">
                                                 <p className={`text-[11px] font-bold line-clamp-2 h-[28px] leading-snug flex-1 ${isRestored ? 'text-amber-800 italic' : 'text-slate-700'}`} title={q.label}>{q.label}</p>
                                                 {isRestored && <AlertTriangle size={12} className="text-amber-500 shrink-0 ml-1"/>}
                                             </div>
@@ -659,6 +751,78 @@ export const ResultsView: React.FC = () => {
             </div>
         )}
 
+        {/* FLOATING ACTION BAR FOR DELETE VARIABLES */}
+        {isManageMode && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white border border-slate-200 shadow-2xl rounded-full px-6 py-3 flex items-center gap-4 z-40 animate-in slide-in-from-bottom-6">
+                <span className="text-sm font-bold text-slate-700">{selectedVarIds.size} Dipilih</span>
+                <div className="h-6 w-px bg-slate-200"></div>
+                <button 
+                    onClick={() => { setIsManageMode(false); setSelectedVarIds(new Set()); }}
+                    className="text-sm font-bold text-slate-500 hover:text-slate-800"
+                >
+                    Batal
+                </button>
+                <button 
+                    onClick={() => { if(selectedVarIds.size > 0) { setIsVarDeleteModalOpen(true); setVarDeletePassword(''); } }}
+                    disabled={selectedVarIds.size === 0}
+                    className="bg-red-600 text-white px-4 py-1.5 rounded-full text-sm font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                    <Trash2 size={16}/> Hapus
+                </button>
+            </div>
+        )}
+
+        {/* VARIABLE DELETE CONFIRMATION MODAL */}
+        {isVarDeleteModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95">
+                    <div className="p-6">
+                        <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                            <Trash2 className="text-red-600" size={24}/>
+                        </div>
+                        <h3 className="text-center font-bold text-slate-800 text-lg mb-2">Hapus {selectedVarIds.size} Variabel?</h3>
+                        <p className="text-center text-slate-500 text-sm mb-6">
+                            Variabel yang dihapus akan hilang dari laporan ini, namun data penilaian tersimpan dapat dipulihkan nanti melalui menu pemulihan.
+                        </p>
+                        
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Kode Otorisasi (Sandi)</label>
+                                <div className="relative">
+                                    <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                                    <input 
+                                        type="password" 
+                                        value={varDeletePassword}
+                                        onChange={(e) => setVarDeletePassword(e.target.value)}
+                                        className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                        placeholder="Masukkan sandi..."
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-2 pt-2">
+                                <button 
+                                    onClick={() => { setIsVarDeleteModalOpen(false); setVarDeletePassword(''); }} 
+                                    className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 transition"
+                                >
+                                    Batal
+                                </button>
+                                <button 
+                                    onClick={handleDeleteVariablesConfirm} 
+                                    disabled={isDeleting || !varDeletePassword}
+                                    className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isDeleting ? 'Menghapus...' : 'Hapus'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        )}
+
+
         {/* RESTORE CONFIGURATION MODAL */}
         {isRestoreModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -688,6 +852,7 @@ export const ResultsView: React.FC = () => {
                                         <th className="px-3 py-2">ID Data</th>
                                         <th className="px-3 py-2 w-32">Tipe</th>
                                         <th className="px-3 py-2">Nama Asli Variabel (Wajib Diisi)</th>
+                                        <th className="px-3 py-2 w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -738,6 +903,15 @@ export const ResultsView: React.FC = () => {
                                                     autoFocus={idx === 0}
                                                 />
                                             </td>
+                                            <td className="px-3 py-3">
+                                                <button 
+                                                    onClick={() => handleRemoveRestoreConfig(idx)}
+                                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                                                    title="Hapus dari daftar pemulihan (Data tidak akan ditampilkan)"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -760,7 +934,7 @@ export const ResultsView: React.FC = () => {
             </div>
         )}
 
-        {/* DELETE CONFIRMATION MODAL */}
+        {/* DELETE SESSION CONFIRMATION MODAL */}
         {isDeleteModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95">
