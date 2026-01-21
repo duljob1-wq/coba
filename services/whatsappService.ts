@@ -129,7 +129,7 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
             }
         }
     } 
-    // --- LOGIC FOR PROCESS REPORT (UPDATED: MULTI TARGET) ---
+    // --- LOGIC FOR PROCESS REPORT (UPDATED: MULTI TARGET & FORMAT) ---
     else if (type === 'process') {
         const pTargets = training.processTargets || (training.processTarget ? [training.processTarget] : []);
         
