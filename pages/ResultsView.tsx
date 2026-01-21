@@ -3,7 +3,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown } from 'lucide-react';
 
 // --- HELPER FUNCTIONS (Pure functions outside component) ---
 const formatDateID = (dateStr: string) => {
@@ -364,6 +364,21 @@ export const ResultsView: React.FC = () => {
       setRestoreConfigs(newConfigs);
   };
 
+  // --- REORDERING HANDLERS ---
+  const handleMoveUp = (index: number) => {
+      if (index === 0) return;
+      const newConfigs = [...restoreConfigs];
+      [newConfigs[index - 1], newConfigs[index]] = [newConfigs[index], newConfigs[index - 1]];
+      setRestoreConfigs(newConfigs);
+  };
+
+  const handleMoveDown = (index: number) => {
+      if (index === restoreConfigs.length - 1) return;
+      const newConfigs = [...restoreConfigs];
+      [newConfigs[index], newConfigs[index + 1]] = [newConfigs[index + 1], newConfigs[index]];
+      setRestoreConfigs(newConfigs);
+  };
+
   // --- DATA RECOVERY HANDLER 2: EXECUTE SAVE ---
   const handleExecuteRestore = async () => {
       if (!training) return;
@@ -377,7 +392,7 @@ export const ResultsView: React.FC = () => {
 
       setIsRestoring(true);
       try {
-          // 1. Create Question Objects from Config
+          // 1. Create Question Objects from Config (Order in restoreConfigs is preserved)
           const restoredQuestions: Question[] = restoreConfigs.map(cfg => ({
               id: cfg.id,
               label: cfg.label,
@@ -669,6 +684,7 @@ export const ResultsView: React.FC = () => {
                             <table className="w-full text-left text-sm">
                                 <thead className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
                                     <tr>
+                                        <th className="px-3 py-2 w-16 text-center">Posisi</th>
                                         <th className="px-3 py-2">ID Data</th>
                                         <th className="px-3 py-2 w-32">Tipe</th>
                                         <th className="px-3 py-2">Nama Asli Variabel (Wajib Diisi)</th>
@@ -677,6 +693,24 @@ export const ResultsView: React.FC = () => {
                                 <tbody className="divide-y divide-slate-100">
                                     {restoreConfigs.map((cfg, idx) => (
                                         <tr key={cfg.id} className="hover:bg-slate-50">
+                                            <td className="px-3 py-3">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <button 
+                                                        onClick={() => handleMoveUp(idx)} 
+                                                        disabled={idx === 0}
+                                                        className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                                                    >
+                                                        <ArrowUp size={14} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleMoveDown(idx)} 
+                                                        disabled={idx === restoreConfigs.length - 1}
+                                                        className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 disabled:hover:bg-transparent"
+                                                    >
+                                                        <ArrowDown size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
                                             <td className="px-3 py-3 font-mono text-[10px] text-slate-400 select-all" title={cfg.id}>
                                                 {cfg.id.substring(0,8)}...
                                             </td>
@@ -715,7 +749,7 @@ export const ResultsView: React.FC = () => {
                         <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-bold text-sm">Batal</button>
                         <button 
                             onClick={handleExecuteRestore} 
-                            disabled={isRestoring} 
+                            disabled={isRestoring}
                             className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
                         >
                             {isRestoring ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>}
