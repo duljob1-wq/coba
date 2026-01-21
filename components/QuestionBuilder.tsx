@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Question, QuestionType } from '../types';
-import { Plus, Trash2, GripVertical, Star, Sliders, Type, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, GripVertical, Star, Sliders, Type, ChevronDown, Edit2, Check, X } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
 interface QuestionBuilderProps {
@@ -12,6 +13,10 @@ interface QuestionBuilderProps {
 export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onChange, title }) => {
   const [newLabel, setNewLabel] = useState('');
   const [newType, setNewType] = useState<QuestionType>('star');
+
+  // State for Editing Existing Items
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabelText, setEditLabelText] = useState('');
 
   const addQuestion = () => {
     if (!newLabel.trim()) return;
@@ -25,7 +30,9 @@ export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onC
   };
 
   const removeQuestion = (id: string) => {
-    onChange(questions.filter(q => q.id !== id));
+    if (confirm("Hapus variabel ini?")) {
+        onChange(questions.filter(q => q.id !== id));
+    }
   };
 
   const updateQuestionType = (id: string, newType: QuestionType) => {
@@ -33,6 +40,27 @@ export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onC
         q.id === id ? { ...q, type: newType } : q
     );
     onChange(updatedQuestions);
+  };
+
+  // --- EDIT HANDLERS ---
+  const startEdit = (q: Question) => {
+      setEditingId(q.id);
+      setEditLabelText(q.label);
+  };
+
+  const cancelEdit = () => {
+      setEditingId(null);
+      setEditLabelText('');
+  };
+
+  const saveEdit = () => {
+      if (!editLabelText.trim()) return;
+      const updatedQuestions = questions.map(q => 
+          q.id === editingId ? { ...q, label: editLabelText } : q
+      );
+      onChange(updatedQuestions);
+      setEditingId(null);
+      setEditLabelText('');
   };
 
   return (
@@ -46,20 +74,36 @@ export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onC
           </div>
         )}
         {questions.map((q, idx) => (
-          <div key={q.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200 shadow-sm group hover:border-indigo-300 transition">
-            <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 text-xs font-mono font-medium">{idx + 1}</span>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-slate-800">{q.label}</p>
+          <div key={q.id} className={`flex items-center gap-3 p-3 bg-white rounded-xl border shadow-sm transition ${editingId === q.id ? 'border-indigo-400 ring-1 ring-indigo-100' : 'border-slate-200 group hover:border-indigo-300'}`}>
+            <span className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 text-xs font-mono font-medium shrink-0">{idx + 1}</span>
+            
+            <div className="flex-1 min-w-0">
+                {editingId === q.id ? (
+                    <div className="flex items-center gap-2">
+                        <input 
+                            type="text" 
+                            value={editLabelText} 
+                            onChange={(e) => setEditLabelText(e.target.value)}
+                            className="flex-1 border border-indigo-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            autoFocus
+                            onKeyDown={(e) => { if(e.key === 'Enter') saveEdit(); else if(e.key === 'Escape') cancelEdit(); }}
+                        />
+                        <button onClick={saveEdit} className="p-1 bg-emerald-100 text-emerald-600 rounded hover:bg-emerald-200" title="Simpan"><Check size={14}/></button>
+                        <button onClick={cancelEdit} className="p-1 bg-slate-100 text-slate-500 rounded hover:bg-slate-200" title="Batal"><X size={14}/></button>
+                    </div>
+                ) : (
+                    <p className="text-sm font-semibold text-slate-800 truncate" title={q.label}>{q.label}</p>
+                )}
             </div>
             
             {/* Dropdown Type Selector */}
-            <div className="relative group/select">
+            <div className="relative group/select shrink-0">
                 <select
                     value={q.type}
                     onChange={(e) => updateQuestionType(q.id, e.target.value as QuestionType)}
-                    className="appearance-none bg-slate-50 border border-slate-200 hover:border-indigo-300 text-slate-600 text-xs font-medium rounded-lg py-1.5 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-colors"
+                    className="appearance-none bg-slate-50 border border-slate-200 hover:border-indigo-300 text-slate-600 text-xs font-medium rounded-lg py-1.5 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-colors w-[130px]"
                 >
-                    <option value="star">★ Rating Bintang</option>
+                    <option value="star">★ Bintang</option>
                     <option value="slider">⸺ Skala 1-100</option>
                     <option value="text">¶ Isian Teks</option>
                 </select>
@@ -68,13 +112,24 @@ export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onC
                 </div>
             </div>
 
-            <button
-              onClick={() => removeQuestion(q.id)}
-              className="text-slate-300 hover:text-red-500 p-1.5 transition"
-              title="Hapus"
-            >
-              <Trash2 size={16} />
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+                {editingId !== q.id && (
+                    <button
+                        onClick={() => startEdit(q)}
+                        className="text-slate-300 hover:text-indigo-600 p-1.5 transition rounded hover:bg-indigo-50"
+                        title="Edit Uraian"
+                    >
+                        <Edit2 size={16} />
+                    </button>
+                )}
+                <button
+                onClick={() => removeQuestion(q.id)}
+                className="text-slate-300 hover:text-red-500 p-1.5 transition rounded hover:bg-red-50"
+                title="Hapus"
+                >
+                <Trash2 size={16} />
+                </button>
+            </div>
           </div>
         ))}
       </div>
