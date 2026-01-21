@@ -27,16 +27,37 @@ export const CommentsView: React.FC = () => {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500">Memuat Laporan...</div>;
   if (!training || !facilitatorId) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500">Data tidak ditemukan.</div>;
 
-  // Find the facilitator details
-  const facilitator = training.facilitators.find(f => f.id === facilitatorId);
-  if (!facilitator) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500">Fasilitator tidak ditemukan.</div>;
+  // --- LOGIC: HANDLE BOTH FACILITATOR AND PROCESS VIEW ---
+  const isProcessView = facilitatorId === 'process';
+  
+  let targetName = '';
+  let targetSubject = '';
+  let targetDate = '';
+  let targetResponses: Response[] = [];
+  let targetQuestions: any[] = [];
 
-  // Filter responses for this facilitator
-  const facilitatorResponses = responses.filter(r => 
-    r.type === 'facilitator' && 
-    r.targetName === facilitator.name && 
-    r.targetSubject === facilitator.subject
-  );
+  if (isProcessView) {
+      // Setup for Process Evaluation
+      targetName = "Evaluasi Penyelenggaraan";
+      targetSubject = "Fasilitas & Layanan";
+      targetDate = training.processEvaluationDate || training.endDate;
+      targetResponses = responses.filter(r => r.type === 'process');
+      targetQuestions = training.processQuestions;
+  } else {
+      // Setup for Facilitator Evaluation
+      const facilitator = training.facilitators.find(f => f.id === facilitatorId);
+      if (!facilitator) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-red-500">Fasilitator tidak ditemukan.</div>;
+      
+      targetName = facilitator.name;
+      targetSubject = facilitator.subject;
+      targetDate = facilitator.sessionDate;
+      targetResponses = responses.filter(r => 
+        r.type === 'facilitator' && 
+        r.targetName === facilitator.name && 
+        r.targetSubject === facilitator.subject
+      );
+      targetQuestions = training.facilitatorQuestions;
+  }
 
   // Helper date format
   const formatDateID = (dateStr: string) => {
@@ -78,8 +99,8 @@ export const CommentsView: React.FC = () => {
   // --- STATS CALCULATION ---
   
   // 1. Calculate Average per Question
-  const variableStats = training.facilitatorQuestions.filter(q => q.type !== 'text').map(q => {
-      const valid = facilitatorResponses.filter(r => typeof r.answers[q.id] === 'number');
+  const variableStats = targetQuestions.filter(q => q.type !== 'text').map(q => {
+      const valid = targetResponses.filter(r => typeof r.answers[q.id] === 'number');
       let avg = 0;
       if (valid.length > 0) {
           const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
@@ -93,10 +114,10 @@ export const CommentsView: React.FC = () => {
   let totalCount = 0;
   let dominantType: QuestionType = 'slider';
 
-  training.facilitatorQuestions.forEach(q => {
+  targetQuestions.forEach(q => {
       if (q.type !== 'text') {
           dominantType = q.type; // Capture last type used
-          const valid = facilitatorResponses.filter(r => typeof r.answers[q.id] === 'number');
+          const valid = targetResponses.filter(r => typeof r.answers[q.id] === 'number');
           if (valid.length > 0) {
               const qSum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
               const qAvg = qSum / valid.length;
@@ -116,12 +137,12 @@ export const CommentsView: React.FC = () => {
         <div className="max-w-3xl mx-auto text-white">
             <div className="flex items-center gap-2 mb-4 opacity-80">
                 <Link to="/" className="hover:bg-white/20 p-1 rounded transition"><ArrowLeft size={20}/></Link>
-                <span className="text-sm font-medium tracking-wide uppercase">Hasil Evaluasi Sesi</span>
+                <span className="text-sm font-medium tracking-wide uppercase">Hasil Evaluasi {isProcessView ? 'Penyelenggaraan' : 'Sesi'}</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold mb-2">{facilitator.name}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold mb-2">{targetName}</h1>
             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6 text-indigo-100 text-sm">
-                <div className="flex items-center gap-2"><BookOpen size={16}/> <span>{facilitator.subject}</span></div>
-                <div className="flex items-center gap-2"><Calendar size={16}/> <span>{formatDateID(facilitator.sessionDate)}</span></div>
+                <div className="flex items-center gap-2"><BookOpen size={16}/> <span>{targetSubject}</span></div>
+                <div className="flex items-center gap-2"><Calendar size={16}/> <span>{formatDateID(targetDate)}</span></div>
             </div>
         </div>
       </div>
@@ -136,8 +157,8 @@ export const CommentsView: React.FC = () => {
                     <Award size={32} />
                 </div>
                 <div>
-                    <h2 className="text-lg font-bold text-slate-800">Performa Sesi</h2>
-                    <p className="text-slate-500 text-xs">Berdasarkan {facilitatorResponses.length} Responden</p>
+                    <h2 className="text-lg font-bold text-slate-800">Performa {isProcessView ? 'Penyelenggaraan' : 'Sesi'}</h2>
+                    <p className="text-slate-500 text-xs">Berdasarkan {targetResponses.length} Responden</p>
                 </div>
             </div>
             <div className="flex items-center gap-4 z-10 bg-slate-50 px-6 py-4 rounded-xl border border-slate-100 w-full sm:w-auto justify-between sm:justify-start">
@@ -185,12 +206,12 @@ export const CommentsView: React.FC = () => {
             </div>
 
             <div className="divide-y divide-slate-100">
-                {training.facilitatorQuestions.filter(q => q.type === 'text').length === 0 ? (
+                {targetQuestions.filter(q => q.type === 'text').length === 0 ? (
                     <div className="p-8 text-center text-slate-400 italic">Tidak ada pertanyaan isian teks dalam evaluasi ini.</div>
                 ) : (
-                    training.facilitatorQuestions.filter(q => q.type === 'text').map(question => {
+                    targetQuestions.filter(q => q.type === 'text').map(question => {
                         // Extract answers for this question
-                        const answers = facilitatorResponses
+                        const answers = targetResponses
                             .map(r => r.answers[question.id])
                             .filter(a => typeof a === 'string' && a.trim() !== '') as string[];
 

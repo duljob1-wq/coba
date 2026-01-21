@@ -167,6 +167,24 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 }
             });
 
+            // --- NEW: Add Comment Snippets (Samakan dengan Fasilitator) ---
+            const textQuestions = training.processQuestions.filter(q => q.type === 'text');
+            let allComments: string[] = [];
+            textQuestions.forEach(q => {
+                const answers = procResponses
+                    .map(r => r.answers[q.id])
+                    .filter(a => typeof a === 'string' && a.trim() !== '') as string[];
+                allComments = [...allComments, ...answers];
+            });
+
+            const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
+
+            if (shortSnippets.length > 0) {
+                const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
+                message += `\n*Cuplikan Pesan Peserta :*\n${joinedSnippets}\n`;
+            }
+            // ------------------------------------------------------------
+
             message += `\n*Rata-rata Keseluruhan:*\n`;
             if (overall.hasStar) {
                 const label = getScoreLabel(overall.starAvg, 'star');
@@ -177,6 +195,14 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 // Remove /100 suffix
                 message += `📊 Skala: *${overall.sliderAvg} (${label})*\n`;
             }
+            
+            // --- NEW: Add Link (Samakan dengan Fasilitator) ---
+            const baseUrl = window.location.href.split('#')[0];
+            // Gunakan keyword 'process' sebagai ID untuk view
+            const commentLink = `${baseUrl}#/comments/${trainingId}/process`;
+
+            message += `\n\n📊 *Hasil Rekap & Pesan Responden:*\n`;
+            message += `Lihat rekapitulasi nilai dan baca seluruh pesan secara real time melalui tautan berikut :\n${commentLink}`;
             
             message += `\n\n${settings.waFooter}`;
 
