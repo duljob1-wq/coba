@@ -1,13 +1,112 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings } from '../services/storageService';
+import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, X, UserCheck } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle } from 'lucide-react';
+
+// --- HELPER FUNCTIONS (Pure functions outside component) ---
+const formatDateID = (dateStr: string) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+const getLabel = (val: number, type: QuestionType) => {
+    if (type === 'text') return '';
+    if (type === 'star') {
+        if (val >= 4.2) return 'Sangat Baik';
+        if (val >= 3.4) return 'Baik';
+        if (val >= 2.6) return 'Cukup';
+        if (val >= 1.8) return 'Sedang';
+        return 'Kurang';
+    } else {
+        if (val >= 86) return 'Sangat Baik';
+        if (val >= 76) return 'Baik';
+        if (val >= 56) return 'Sedang';
+        return 'Kurang';
+    }
+};
+
+const getLabelColor = (val: number, type: QuestionType) => {
+    if (type === 'star') {
+        if (val >= 4.2) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+        if (val >= 3.4) return 'text-blue-600 bg-blue-50 border-blue-200';
+        if (val >= 2.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+        if (val >= 1.8) return 'text-orange-600 bg-orange-50 border-orange-200';
+        return 'text-red-600 bg-red-50 border-red-200';
+    } else {
+        if (val >= 86) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+        if (val >= 76) return 'text-blue-600 bg-blue-50 border-blue-200';
+        if (val >= 56) return 'text-orange-600 bg-orange-50 border-orange-200';
+        return 'text-red-600 bg-red-50 border-red-200';
+    }
+};
+
+const getAverage = (responses: Response[], qId: string) => {
+    const valid = responses.filter(r => typeof r.answers[qId] === 'number');
+    if (valid.length === 0) return 0;
+    const sum = valid.reduce((acc, curr) => acc + (curr.answers[qId] as number), 0);
+    return Number((sum / valid.length).toFixed(2)); 
+};
+
+const getTextAnswers = (responses: Response[], qId: string) => {
+    return responses
+    .map(r => r.answers[qId])
+    .filter(a => typeof a === 'string' && a.trim() !== '') as string[];
+};
+
+function calculateOverall(items: Response[], qs: Question[]) {
+    const starQs = qs.filter(q => q.type === 'star');
+    let starAvg = 0;
+    if (starQs.length > 0) {
+        let totalScore = 0;
+        let totalCount = 0;
+        starQs.forEach(q => {
+            const valid = items.filter(r => typeof r.answers[q.id] === 'number');
+            if(valid.length) {
+                totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
+                totalCount += valid.length;
+            }
+        });
+        starAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+    }
+
+    const sliderQs = qs.filter(q => q.type === 'slider');
+    let sliderAvg = 0;
+    if (sliderQs.length > 0) {
+        let totalScore = 0;
+        let totalCount = 0;
+        sliderQs.forEach(q => {
+            const valid = items.filter(r => typeof r.answers[q.id] === 'number');
+            if(valid.length) {
+                totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
+                totalCount += valid.length;
+            }
+        });
+        sliderAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
+    }
+
+    return { starAvg, sliderAvg, hasStar: starQs.length > 0, hasSlider: sliderQs.length > 0 };
+}
+
+interface SessionData {
+    name: string;
+    subject: string;
+    date: string;
+    items: Response[];
+    overall: {
+        starAvg: number;
+        sliderAvg: number;
+        hasStar: boolean;
+        hasSlider: boolean;
+    };
+}
 
 export const ResultsView: React.FC = () => {
   const { trainingId } = useParams<{ trainingId: string }>();
-  const [training, setTraining] = useState<Training>();
+  
+  // --- 1. HOOKS DECLARATION (MUST BE TOP LEVEL) ---
+  const [training, setTraining] = useState<Training | undefined>(undefined);
   const [responses, setResponses] = useState<Response[]>([]);
   const [activeTab, setActiveTab] = useState<'facilitator' | 'process'>('facilitator');
 
@@ -16,15 +115,18 @@ export const ResultsView: React.FC = () => {
   const [targetToDelete, setTargetToDelete] = useState<string | null>(null);
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [sysDeletePass, setSysDeletePass] = useState('adm123'); // Default fallback
+  const [sysDeletePass, setSysDeletePass] = useState('adm123'); 
 
+  // Data Recovery State
+  const [showRestoredData, setShowRestoredData] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  // --- 2. EFFECT HOOKS ---
   useEffect(() => {
     const fetchData = async () => {
         if (trainingId) {
             setTraining(await getTrainingById(trainingId));
             setResponses(await getResponses(trainingId));
-            
-            // Get delete password
             const s = await getSettings();
             if (s.deletePassword) setSysDeletePass(s.deletePassword);
         }
@@ -32,209 +134,161 @@ export const ResultsView: React.FC = () => {
     fetchData();
   }, [trainingId]);
 
-  if (!training) return <div className="p-8 text-center text-slate-500">Memuat Laporan...</div>;
-
-  const formatDateID = (dateStr: string) => {
-     if (!dateStr) return '';
-     return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  };
-
-  const filteredResponses = responses.filter(r => r.type === activeTab);
-  const questions = activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
-
-  // --- DATA PROCESSING START ---
+  // --- 3. MEMO HOOKS (LOGIC) ---
   
-  // Interface for flattened session data
-  interface SessionData {
-      name: string;
-      subject: string;
-      date: string;
-      items: Response[];
-      overall: {
-          starAvg: number;
-          sliderAvg: number;
-          hasStar: boolean;
-          hasSlider: boolean;
-      };
-  }
+  // Filter responses based on active tab
+  const filteredResponses = useMemo(() => {
+      return responses.filter(r => r.type === activeTab);
+  }, [responses, activeTab]);
 
-  // 1. Group responses into unique sessions (Name + Subject)
-  const groupedSessions: Record<string, Response[]> = {};
-  
-  if (activeTab === 'process') {
-      groupedSessions['Penyelenggaraan|Umum'] = filteredResponses;
-  } else {
+  // Get currently active questions from training config
+  const activeQuestions = useMemo(() => {
+      if (!training) return [];
+      return activeTab === 'facilitator' ? training.facilitatorQuestions : training.processQuestions;
+  }, [training, activeTab]);
+
+  // --- DATA RECOVERY LOGIC ---
+  // Detect IDs in response answers that are NOT in activeQuestions
+  const orphanedQuestionIds = useMemo(() => {
+      const currentIds = new Set(activeQuestions.map(q => q.id));
+      const orphans = new Set<string>();
+
       filteredResponses.forEach(r => {
-          const name = r.targetName || 'Umum';
-          const subject = r.targetSubject || 'Umum';
-          const key = `${name}|${subject}`;
-          if (!groupedSessions[key]) groupedSessions[key] = [];
-          groupedSessions[key].push(r);
-      });
-  }
-
-  // 2. Flatten to array and Attach Dates from Training Data
-  let flatSessions: SessionData[] = Object.keys(groupedSessions).map(key => {
-      const [name, subject] = key.split('|');
-      const items = groupedSessions[key];
-      
-      // Find Date Metadata
-      let date = '';
-      if (activeTab === 'facilitator') {
-          const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
-          if (facData) date = facData.sessionDate;
-      }
-
-      // Calculate Stats immediately
-      const overall = calculateOverall(items, questions);
-
-      return { name, subject, date, items, overall };
-  });
-
-  // 3. SORTING LOGIC: Chronological (Date Ascending)
-  // If dates are equal, fallback to Order or Name
-  flatSessions.sort((a, b) => {
-      if (activeTab === 'process') return 0;
-
-      // Primary: Date Ascending
-      if (a.date && b.date) {
-          if (a.date < b.date) return -1;
-          if (a.date > b.date) return 1;
-      }
-      
-      // Secondary: Original Order in Training Data (to keep consistent within same day)
-      const facA = training.facilitators.find(f => f.name === a.name && f.subject === a.subject);
-      const facB = training.facilitators.find(f => f.name === b.name && f.subject === b.subject);
-      const orderA = facA?.order || 0;
-      const orderB = facB?.order || 0;
-      
-      return orderA - orderB;
-  });
-
-  // --- DATA PROCESSING END ---
-
-  function calculateOverall(items: Response[], qs: Question[]) {
-      // Star Calculation
-      const starQs = qs.filter(q => q.type === 'star');
-      let starAvg = 0;
-      if (starQs.length > 0) {
-          let totalScore = 0;
-          let totalCount = 0;
-          starQs.forEach(q => {
-             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
-             if(valid.length) {
-                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
-                 totalCount += valid.length;
-             }
-          });
-          starAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
-      }
-
-      // Slider Calculation
-      const sliderQs = qs.filter(q => q.type === 'slider');
-      let sliderAvg = 0;
-      if (sliderQs.length > 0) {
-          let totalScore = 0;
-          let totalCount = 0;
-          sliderQs.forEach(q => {
-             const valid = items.filter(r => typeof r.answers[q.id] === 'number');
-             if(valid.length) {
-                 totalScore += valid.reduce((a,b) => a + (b.answers[q.id] as number), 0);
-                 totalCount += valid.length;
-             }
-          });
-          sliderAvg = totalCount ? Number((totalScore / totalCount).toFixed(2)) : 0;
-      }
-
-      return { starAvg, sliderAvg, hasStar: starQs.length > 0, hasSlider: sliderQs.length > 0 };
-  }
-
-  const getAverage = (responses: Response[], qId: string) => {
-    const valid = responses.filter(r => typeof r.answers[qId] === 'number');
-    if (valid.length === 0) return 0;
-    const sum = valid.reduce((acc, curr) => acc + (curr.answers[qId] as number), 0);
-    return Number((sum / valid.length).toFixed(2)); 
-  };
-
-  const getTextAnswers = (responses: Response[], qId: string) => {
-      return responses
-        .map(r => r.answers[qId])
-        .filter(a => typeof a === 'string' && a.trim() !== '') as string[];
-  }
-
-  // Helper for Label
-  const getLabel = (val: number, type: QuestionType) => {
-      if (type === 'text') return '';
-      if (type === 'star') {
-          if (val >= 4.2) return 'Sangat Baik';
-          if (val >= 3.4) return 'Baik';
-          if (val >= 2.6) return 'Cukup';
-          if (val >= 1.8) return 'Sedang';
-          return 'Kurang';
-      } else {
-          // Slider Scale: 45-100 with breakpoints 55, 75, 85
-          if (val >= 86) return 'Sangat Baik';
-          if (val >= 76) return 'Baik';
-          if (val >= 56) return 'Sedang';
-          return 'Kurang';
-      }
-  };
-
-  const getLabelColor = (val: number, type: QuestionType) => {
-      if (type === 'star') {
-          if (val >= 4.2) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-          if (val >= 3.4) return 'text-blue-600 bg-blue-50 border-blue-200';
-          if (val >= 2.6) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-          if (val >= 1.8) return 'text-orange-600 bg-orange-50 border-orange-200';
-          return 'text-red-600 bg-red-50 border-red-200';
-      } else {
-          if (val >= 86) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-          if (val >= 76) return 'text-blue-600 bg-blue-50 border-blue-200';
-          if (val >= 56) return 'text-orange-600 bg-orange-50 border-orange-200';
-          return 'text-red-600 bg-red-50 border-red-200';
-      }
-  }
-
-  // --- NEW: Calculate Grand Average for Facilitators ---
-  let grandAvg = 0;
-  let grandAvgLabel = '';
-  let grandAvgColor = '';
-
-  if (activeTab === 'facilitator' && flatSessions.length > 0) {
-      let totalSessionAvg = 0;
-      let sessionCount = 0;
-
-      flatSessions.forEach(session => {
-          let sessionTotalScore = 0;
-          let sessionMetricCount = 0;
-
-          questions.forEach(q => {
-              if (q.type !== 'text') {
-                  const valid = session.items.filter(r => typeof r.answers[q.id] === 'number');
-                  if (valid.length > 0) {
-                      const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
-                      const avg = sum / valid.length;
-                      sessionTotalScore += avg;
-                      sessionMetricCount++;
+          if (r.answers) {
+              Object.keys(r.answers).forEach(qId => {
+                  if (!currentIds.has(qId)) {
+                      orphans.add(qId);
                   }
+              });
+          }
+      });
+      return Array.from(orphans);
+  }, [filteredResponses, activeQuestions]);
+
+  // Construct "Effective Questions" list (Active + Restored)
+  const effectiveQuestions = useMemo(() => {
+      if (!showRestoredData || orphanedQuestionIds.length === 0) return activeQuestions;
+
+      // Create "Ghost" questions for restored data
+      const restoredQuestions: Question[] = orphanedQuestionIds.map(id => {
+          // Try to infer type from first valid response found
+          let inferredType: QuestionType = 'star';
+          const sample = filteredResponses.find(r => r.answers[id] !== undefined);
+          if (sample) {
+              const val = sample.answers[id];
+              if (typeof val === 'string') inferredType = 'text';
+              else if (typeof val === 'number') {
+                  // Heuristic: > 5 usually implies slider (0-100), <= 5 implies star
+                  inferredType = val > 5 ? 'slider' : 'star';
+              }
+          }
+
+          return {
+              id: id,
+              label: `[RECOVERY] Variabel ${id.substring(0,6)}`, // Placeholder label as original label is lost
+              type: inferredType
+          };
+      });
+
+      return [...activeQuestions, ...restoredQuestions];
+  }, [activeQuestions, orphanedQuestionIds, showRestoredData, filteredResponses]);
+
+  // Group Responses into Sessions and Calculate Stats
+  const flatSessions = useMemo<SessionData[]>(() => {
+      if (!training) return [];
+
+      const groupedSessions: Record<string, Response[]> = {};
+      
+      if (activeTab === 'process') {
+          groupedSessions['Penyelenggaraan|Umum'] = filteredResponses;
+      } else {
+          filteredResponses.forEach(r => {
+              const name = r.targetName || 'Umum';
+              const subject = r.targetSubject || 'Umum';
+              const key = `${name}|${subject}`;
+              if (!groupedSessions[key]) groupedSessions[key] = [];
+              groupedSessions[key].push(r);
+          });
+      }
+
+      let sessions = Object.keys(groupedSessions).map(key => {
+          const [name, subject] = key.split('|');
+          const items = groupedSessions[key];
+          
+          let date = '';
+          if (activeTab === 'facilitator') {
+              const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
+              if (facData) date = facData.sessionDate;
+          }
+
+          // Use effectiveQuestions here to include restored data in averages
+          const overall = calculateOverall(items, effectiveQuestions);
+
+          return { name, subject, date, items, overall };
+      });
+
+      // Sort
+      sessions.sort((a, b) => {
+          if (activeTab === 'process') return 0;
+          // Sort by Date
+          if (a.date && b.date) {
+              if (a.date < b.date) return -1;
+              if (a.date > b.date) return 1;
+          }
+          // Fallback to order in config
+          const facA = training.facilitators.find(f => f.name === a.name && f.subject === a.subject);
+          const facB = training.facilitators.find(f => f.name === b.name && f.subject === b.subject);
+          const orderA = facA?.order || 0;
+          const orderB = facB?.order || 0;
+          return orderA - orderB;
+      });
+
+      return sessions;
+  }, [training, filteredResponses, activeTab, effectiveQuestions]);
+
+  // Grand Average Calculation
+  const grandStats = useMemo(() => {
+      let grandAvg = 0;
+      let grandAvgLabel = '';
+      let grandAvgColor = '';
+
+      if (activeTab === 'facilitator' && flatSessions.length > 0) {
+          let totalSessionAvg = 0;
+          let sessionCount = 0;
+
+          flatSessions.forEach(session => {
+              let sessionTotalScore = 0;
+              let sessionMetricCount = 0;
+
+              effectiveQuestions.forEach(q => {
+                  if (q.type !== 'text') {
+                      const valid = session.items.filter(r => typeof r.answers[q.id] === 'number');
+                      if (valid.length > 0) {
+                          const sum = valid.reduce((acc, curr) => acc + (curr.answers[q.id] as number), 0);
+                          const avg = sum / valid.length;
+                          sessionTotalScore += avg;
+                          sessionMetricCount++;
+                      }
+                  }
+              });
+
+              if (sessionMetricCount > 0) {
+                  totalSessionAvg += (sessionTotalScore / sessionMetricCount);
+                  sessionCount++;
               }
           });
 
-          if (sessionMetricCount > 0) {
-              totalSessionAvg += (sessionTotalScore / sessionMetricCount);
-              sessionCount++;
+          if (sessionCount > 0) {
+              grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2));
+              const type: QuestionType = grandAvg > 5 ? 'slider' : 'star';
+              grandAvgLabel = getLabel(grandAvg, type);
+              grandAvgColor = getLabelColor(grandAvg, type);
           }
-      });
-
-      if (sessionCount > 0) {
-          grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2));
-          const type: QuestionType = grandAvg > 5 ? 'slider' : 'star';
-          grandAvgLabel = getLabel(grandAvg, type);
-          grandAvgColor = getLabelColor(grandAvg, type);
       }
-  }
+      return { grandAvg, grandAvgLabel, grandAvgColor };
+  }, [flatSessions, effectiveQuestions, activeTab]);
 
-  // --- DELETE HANDLERS ---
+  // --- 4. HANDLERS ---
   const handleInitiateDelete = (name: string) => {
       setTargetToDelete(name);
       setDeletePassword('');
@@ -267,6 +321,67 @@ export const ResultsView: React.FC = () => {
       }
   };
 
+  // --- DATA RECOVERY HANDLER (PERMANENT RESTORE) ---
+  const handlePermanentRestore = async () => {
+      if (!training || orphanedQuestionIds.length === 0) return;
+
+      const confirmRestore = window.confirm(
+          "Konfirmasi Pemulihan Permanen:\n\n" +
+          "Variabel yang terhapus akan ditambahkan kembali ke konfigurasi pelatihan ini secara permanen.\n\n" +
+          "CATATAN: Karena label pertanyaan asli tidak tersimpan di respon, sistem akan menggunakan label generik '[RECOVERY]'.\n\n" +
+          "Sangat disarankan untuk segera Mengubah Nama Variabel tersebut di menu 'Edit Pelatihan' agar laporan terlihat rapi."
+      );
+
+      if (!confirmRestore) return;
+
+      setIsRestoring(true);
+      try {
+          // 1. Reconstruct ghost questions
+          const restoredQuestions: Question[] = orphanedQuestionIds.map(id => {
+              let inferredType: QuestionType = 'star';
+              const sample = filteredResponses.find(r => r.answers[id] !== undefined);
+              if (sample) {
+                  const val = sample.answers[id];
+                  if (typeof val === 'string') inferredType = 'text';
+                  else if (typeof val === 'number') {
+                      inferredType = val > 5 ? 'slider' : 'star';
+                  }
+              }
+
+              return {
+                  id: id,
+                  label: `[RECOVERY] Variabel ${id.substring(0,6)}`,
+                  type: inferredType
+              };
+          });
+
+          // 2. Prepare update
+          const updatedTraining = { ...training };
+          if (activeTab === 'facilitator') {
+              updatedTraining.facilitatorQuestions = [...updatedTraining.facilitatorQuestions, ...restoredQuestions];
+          } else {
+              updatedTraining.processQuestions = [...updatedTraining.processQuestions, ...restoredQuestions];
+          }
+
+          // 3. Save to DB
+          await saveTraining(updatedTraining);
+          
+          // 4. Update UI State
+          setTraining(updatedTraining);
+          setShowRestoredData(false); // Hide banner as they are now active
+          alert("Berhasil! Variabel telah dipulihkan. Mohon segera ubah nama label di menu Edit Pelatihan.");
+
+      } catch (error) {
+          console.error("Failed to restore", error);
+          alert("Terjadi kesalahan saat menyimpan data.");
+      } finally {
+          setIsRestoring(false);
+      }
+  };
+
+  // --- 5. RENDER (EARLY RETURN AFTER HOOKS) ---
+  if (!training) return <div className="p-8 text-center text-slate-500">Memuat Laporan...</div>;
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-12">
       {/* Header */}
@@ -280,15 +395,12 @@ export const ResultsView: React.FC = () => {
                     <h1 className="text-lg font-bold text-slate-800">Laporan Hasil Evaluasi</h1>
                     <div className="flex flex-col gap-1 mt-1">
                         <span className="text-sm font-bold text-slate-700">{training.title}</span>
-                        
-                        {/* COMBINED INFO DISPLAY (SINGLE LINE, PLAIN TEXT) */}
                         {(training.learningMethod || training.location) && (
                             <span className="text-xs text-slate-500 mt-0.5">
                                 {training.learningMethod && `Metode Pembelajaran ${training.learningMethod} `}
                                 {training.location && `Di UPT Pelatihan Kesehatan Masyarakat Kampus ${training.location}`}
                             </span>
                         )}
-                        
                         <span className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
                             <Calendar size={10} />
                             Periode: {formatDateID(training.startDate)} s/d {formatDateID(training.endDate)}
@@ -299,13 +411,13 @@ export const ResultsView: React.FC = () => {
             
             <div className="bg-slate-100 p-1 rounded-lg flex gap-1 self-start md:self-center">
                 <button
-                    onClick={() => setActiveTab('facilitator')}
+                    onClick={() => { setActiveTab('facilitator'); setShowRestoredData(false); }}
                     className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'facilitator' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Fasilitator
                 </button>
                 <button
-                    onClick={() => setActiveTab('process')}
+                    onClick={() => { setActiveTab('process'); setShowRestoredData(false); }}
                     className={`px-4 py-1.5 rounded-md text-sm font-semibold transition ${activeTab === 'process' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                     Penyelenggaraan
@@ -316,8 +428,45 @@ export const ResultsView: React.FC = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
+        {/* --- RECOVERY BANNER --- */}
+        {orphanedQuestionIds.length > 0 && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-4 shadow-sm">
+                <div className="flex items-start gap-3">
+                    <div className="bg-amber-100 p-2 rounded-full text-amber-600 shrink-0">
+                        <AlertTriangle size={24} />
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-amber-800 text-sm">Terdeteksi Data Lama / Terhapus</h3>
+                        <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                            Sistem mendeteksi adanya data penilaian responden untuk <strong>{orphanedQuestionIds.length} variabel pertanyaan</strong> yang telah Anda hapus atau ubah dari konfigurasi pelatihan ini.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                    <button 
+                        onClick={() => setShowRestoredData(!showRestoredData)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition shadow-sm border ${showRestoredData ? 'bg-white text-amber-800 border-amber-300' : 'bg-amber-100 border-amber-200 text-amber-800 hover:bg-amber-200'}`}
+                    >
+                        {showRestoredData ? <EyeOff size={16}/> : <Eye size={16}/>}
+                        {showRestoredData ? 'Sembunyikan' : 'Lihat'}
+                    </button>
+                    
+                    {showRestoredData && (
+                        <button 
+                            onClick={handlePermanentRestore}
+                            disabled={isRestoring}
+                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition shadow-sm bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-700 disabled:opacity-50"
+                        >
+                            {isRestoring ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>}
+                            Simpan Permanen
+                        </button>
+                    )}
+                </div>
+            </div>
+        )}
+
         {/* GRAND AVERAGE SUMMARY CARD (FACILITATOR ONLY) */}
-        {activeTab === 'facilitator' && grandAvg > 0 && (
+        {activeTab === 'facilitator' && grandStats.grandAvg > 0 && (
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
                 <div className="flex items-center gap-4 z-10">
@@ -331,11 +480,11 @@ export const ResultsView: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-6 z-10 bg-slate-50 px-6 py-3 rounded-xl border border-slate-100">
                      <div className="text-right">
-                        <div className="text-3xl font-bold text-slate-900 leading-none">{grandAvg}</div>
+                        <div className="text-3xl font-bold text-slate-900 leading-none">{grandStats.grandAvg}</div>
                         <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Nilai Rata-rata</div>
                      </div>
-                     <div className={`px-4 py-1.5 rounded-lg border-2 font-bold text-xs uppercase tracking-wide shadow-sm ${grandAvgColor}`}>
-                        {grandAvgLabel}
+                     <div className={`px-4 py-1.5 rounded-lg border-2 font-bold text-xs uppercase tracking-wide shadow-sm ${grandStats.grandAvgColor}`}>
+                        {grandStats.grandAvgLabel}
                      </div>
                 </div>
             </div>
@@ -419,18 +568,24 @@ export const ResultsView: React.FC = () => {
 
                                 {/* Grid of Scores */}
                                 <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                                    {questions.map(q => {
+                                    {effectiveQuestions.map(q => {
                                         const avg = getAverage(session.items, q.id);
                                         const label = getLabel(avg, q.type);
                                         const labelColor = getLabelColor(avg, q.type);
                                         
+                                        // Visual distinction for restored data
+                                        const isRestored = q.label.includes('[RECOVERY]');
+                                        
                                         return (
-                                        <div key={q.id} className="bg-white border border-slate-100 rounded-lg p-2.5 shadow-sm flex flex-col h-full">
-                                            <p className="text-[11px] font-bold text-slate-700 mb-1.5 line-clamp-2 h-[28px] leading-snug" title={q.label}>{q.label}</p>
+                                        <div key={q.id} className={`bg-white border rounded-lg p-2.5 shadow-sm flex flex-col h-full ${isRestored ? 'border-amber-300 bg-amber-50 ring-1 ring-amber-100' : 'border-slate-100'}`}>
+                                            <div className="flex items-start justify-between mb-1.5">
+                                                <p className={`text-[11px] font-bold line-clamp-2 h-[28px] leading-snug flex-1 ${isRestored ? 'text-amber-800 italic' : 'text-slate-700'}`} title={q.label}>{q.label}</p>
+                                                {isRestored && <AlertTriangle size={12} className="text-amber-500 shrink-0 ml-1"/>}
+                                            </div>
                                             
                                             <div className="mt-auto">
                                                 {q.type === 'text' ? (
-                                                    <div className="bg-slate-50 rounded-lg p-2 max-h-32 overflow-y-auto space-y-2 custom-scrollbar border border-slate-100">
+                                                    <div className="bg-white/50 rounded-lg p-2 max-h-32 overflow-y-auto space-y-2 custom-scrollbar border border-slate-200/50">
                                                         {getTextAnswers(session.items, q.id).length > 0 ? (
                                                             getTextAnswers(session.items, q.id).map((ans, idx) => (
                                                                 <div key={idx} className="flex gap-1.5 text-[10px] text-slate-600 leading-relaxed border-b border-slate-100 last:border-0 pb-1 last:pb-0">
