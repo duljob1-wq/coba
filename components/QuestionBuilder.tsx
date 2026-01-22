@@ -134,19 +134,19 @@ export const QuestionBuilder: React.FC<QuestionBuilderProps> = ({ questions, onC
                 )}
             </div>
             
-            {/* Dropdown Type Selector */}
+            {/* Dropdown Type Selector - OPTIMIZED WIDTH */}
             <div className="relative group/select shrink-0 hidden sm:block">
                 <select
                     value={q.type}
                     onChange={(e) => updateQuestionType(q.id, e.target.value as QuestionType)}
                     disabled={isReorderMode}
-                    className={`appearance-none border border-slate-200 text-xs font-medium rounded-lg py-1.5 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors w-[130px] ${isReorderMode ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50 hover:border-indigo-300 text-slate-600 cursor-pointer'}`}
+                    className={`appearance-none border border-slate-200 text-xs font-medium rounded-lg py-1.5 pl-2 pr-6 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors w-[105px] ${isReorderMode ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-slate-50 hover:border-indigo-300 text-slate-600 cursor-pointer'}`}
                 >
                     <option value="star">★ Bintang</option>
-                    <option value="slider">⸺ Skala 1-100</option>
-                    <option value="text">¶ Isian Teks</option>
+                    <option value="slider">⸺ Skala</option>
+                    <option value="text">¶ Teks</option>
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-slate-400">
                     <ChevronDown size={14} />
                 </div>
             </div>
