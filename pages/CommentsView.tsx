@@ -229,14 +229,25 @@ export const CommentsView: React.FC = () => {
                         <tbody className="divide-y divide-slate-100">
                             {targetQuestions.filter(q => q.type !== 'text').map((q, idx) => {
                                 const dist = calculateDistribution(q.id, q.type);
+                                
+                                // FIND HIGHEST VALUE
+                                const valK = parseFloat(dist.k);
+                                const valS = parseFloat(dist.s);
+                                const valB = parseFloat(dist.b);
+                                const valSb = parseFloat(dist.sb);
+                                const maxVal = Math.max(valK, valS, valB, valSb);
+                                
+                                // Helper class function - MODIFIED: Removed bg-slate-100
+                                const getStyle = (val: number) => val === maxVal && maxVal > 0 ? 'font-extrabold text-slate-900' : 'text-slate-500';
+
                                 return (
                                     <tr key={q.id} className="hover:bg-slate-50 transition">
                                         <td className="px-4 py-3 text-center text-slate-500 font-mono text-xs">{idx + 1}</td>
                                         <td className="px-4 py-3 text-slate-800 font-medium text-xs md:text-sm">{q.label}</td>
-                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.k}%</td>
-                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.s}%</td>
-                                        <td className="px-4 py-3 text-center border-l border-slate-50 text-xs">{dist.b}%</td>
-                                        <td className="px-4 py-3 text-center border-l border-slate-50 font-bold text-slate-900 text-xs">{dist.sb}%</td>
+                                        <td className={`px-4 py-3 text-center border-l border-slate-50 text-xs ${getStyle(valK)}`}>{dist.k}%</td>
+                                        <td className={`px-4 py-3 text-center border-l border-slate-50 text-xs ${getStyle(valS)}`}>{dist.s}%</td>
+                                        <td className={`px-4 py-3 text-center border-l border-slate-50 text-xs ${getStyle(valB)}`}>{dist.b}%</td>
+                                        <td className={`px-4 py-3 text-center border-l border-slate-50 text-xs ${getStyle(valSb)}`}>{dist.sb}%</td>
                                     </tr>
                                 );
                             })}

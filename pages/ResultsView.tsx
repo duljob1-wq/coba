@@ -72,7 +72,7 @@ const calculateDistribution = (responses: Response[], qId: string, type: Questio
         }
     });
 
-    if (counts.total === 0) return { k: 0, s: 0, b: 0, sb: 0, total: 0 };
+    if (counts.total === 0) return { k: '0.0', s: '0.0', b: '0.0', sb: '0.0', total: 0 };
     
     // Return formatted percentages (1 decimal)
     return {
@@ -492,6 +492,16 @@ export const ResultsView: React.FC = () => {
                                                     const isRestored = q.label.includes('(Data Lama)');
                                                     const isSelected = selectedVarIds.has(q.id);
                                                     
+                                                    // FIND HIGHEST VALUE
+                                                    const valK = parseFloat(dist.k);
+                                                    const valS = parseFloat(dist.s);
+                                                    const valB = parseFloat(dist.b);
+                                                    const valSb = parseFloat(dist.sb);
+                                                    const maxVal = Math.max(valK, valS, valB, valSb);
+                                                    
+                                                    // Helper class function - MODIFIED: Removed bg-slate-100
+                                                    const getStyle = (val: number) => val === maxVal && maxVal > 0 ? 'font-extrabold text-slate-900' : 'text-slate-500';
+
                                                     return (
                                                         <tr key={q.id} className={`hover:bg-slate-50 transition ${isRestored ? 'bg-amber-50/50' : ''} ${isSelected ? 'bg-red-50' : ''}`} onClick={() => { if(isManageMode && !isRestored) handleToggleSelectVariable(q.id); }}>
                                                             <td className="px-4 py-3 text-center text-slate-500 font-mono text-xs">
@@ -501,10 +511,10 @@ export const ResultsView: React.FC = () => {
                                                                 {q.label}
                                                                 {isRestored && <span className="ml-2 text-[10px] text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">Data Lama</span>}
                                                             </td>
-                                                            <td className="px-4 py-3 text-center border-l border-slate-50">{dist.k}%</td>
-                                                            <td className="px-4 py-3 text-center border-l border-slate-50">{dist.s}%</td>
-                                                            <td className="px-4 py-3 text-center border-l border-slate-50">{dist.b}%</td>
-                                                            <td className="px-4 py-3 text-center border-l border-slate-50 font-bold text-slate-900">{dist.sb}%</td>
+                                                            <td className={`px-4 py-3 text-center border-l border-slate-50 ${getStyle(valK)}`}>{dist.k}%</td>
+                                                            <td className={`px-4 py-3 text-center border-l border-slate-50 ${getStyle(valS)}`}>{dist.s}%</td>
+                                                            <td className={`px-4 py-3 text-center border-l border-slate-50 ${getStyle(valB)}`}>{dist.b}%</td>
+                                                            <td className={`px-4 py-3 text-center border-l border-slate-50 ${getStyle(valSb)}`}>{dist.sb}%</td>
                                                         </tr>
                                                     );
                                                 })}
