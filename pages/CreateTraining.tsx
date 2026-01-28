@@ -22,7 +22,7 @@ export const CreateTraining: React.FC = () => {
 
   // Extended Info (Optional)
   const [useMethod, setUseMethod] = useState(false);
-  const [learningMethod, setLearningMethod] = useState('Klasikal');
+  const [learningMethod, setLearningMethod] = useState(''); // Menyimpan Nama Tema
   const [useLocation, setUseLocation] = useState(false);
   const [location, setLocation] = useState('Surabaya');
 
@@ -191,6 +191,37 @@ export const CreateTraining: React.FC = () => {
       }
       if (!processDate) setProcessDate(endDate);
       setStep(2);
+  };
+
+  // --- HANDLER BARU: METODE PEMBELAJARAN (TEMA) ---
+  const handleMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const selectedThemeId = e.target.value;
+      
+      // Cari tema berdasarkan ID
+      const theme = availableThemes.find(t => t.id === selectedThemeId);
+      
+      if (theme) {
+          // Simpan nama tema ke learningMethod
+          setLearningMethod(theme.name);
+          
+          // Terapkan Pertanyaan Fasilitator
+          if (theme.facilitatorQuestions && theme.facilitatorQuestions.length > 0) {
+              setFacilitatorQuestions(theme.facilitatorQuestions.map(q => ({
+                  ...q,
+                  id: uuidv4() // Generate ID baru agar tidak konflik referensi
+              })));
+          }
+
+          // Terapkan Pertanyaan Proses
+          if (theme.processQuestions && theme.processQuestions.length > 0) {
+              setProcessQuestions(theme.processQuestions.map(q => ({
+                  ...q,
+                  id: uuidv4()
+              })));
+          }
+      } else {
+          setLearningMethod('');
+      }
   };
 
   const handleFacNameChange = (index: number, value: string) => {
@@ -382,15 +413,23 @@ export const CreateTraining: React.FC = () => {
                     <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
                             <input type="checkbox" checked={useMethod} onChange={e => setUseMethod(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" disabled={step === 2}/>
-                            <span className="text-sm font-bold text-slate-700 flex items-center gap-2"><Monitor size={14}/> Tambah Metode Pembelajaran</span>
+                            <span className="text-sm font-bold text-slate-700 flex items-center gap-2"><Monitor size={14}/> Tambah Metode Pembelajaran (Terapkan Tema)</span>
                         </label>
                         {useMethod && (
-                            <select value={learningMethod} onChange={e => setLearningMethod(e.target.value)} disabled={step === 2} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white animate-in fade-in slide-in-from-top-2">
-                                <option value="Klasikal">Klasikal</option>
-                                <option value="Blended">Blended</option>
-                                <option value="Daring Learning">Daring Learning</option>
+                            <select 
+                                value={availableThemes.find(t => t.name === learningMethod)?.id || ''} 
+                                onChange={handleMethodChange} 
+                                disabled={step === 2} 
+                                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white animate-in fade-in slide-in-from-top-2"
+                            >
+                                <option value="">-- Pilih Tema Pelatihan --</option>
+                                {availableThemes.length === 0 && <option disabled>Tidak ada tema tersedia</option>}
+                                {availableThemes.map(theme => (
+                                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                                ))}
                             </select>
                         )}
+                        {useMethod && learningMethod && <p className="text-[10px] text-green-600 mt-1 italic flex items-center gap-1"><CheckCircle size={10}/> Variabel tema "{learningMethod}" akan diterapkan di langkah selanjutnya.</p>}
                     </div>
                     <div>
                         <label className="flex items-center gap-2 mb-2 cursor-pointer select-none">
