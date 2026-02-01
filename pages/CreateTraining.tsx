@@ -251,7 +251,8 @@ export const CreateTraining: React.FC = () => {
   const selectProcessContact = (contact: Contact) => { setProcessOrganizerName(contact.name); setProcessOrganizerWa(contact.whatsapp); setShowProcessSuggestions(false); };
 
   // --- CORE LOGIC: Add Facilitator ---
-  const addFacilitatorFromTop = (overrideNames: string[] = []) => {
+  // UPDATED: Added manualContact parameter for direct injection
+  const addFacilitatorFromTop = (overrideNames: string[] = [], manualContact?: Contact) => {
     const validNames = facNames.map(n => n.trim()).filter(Boolean);
     const validSubjects = facSubjects.map(s => s.trim()).filter(Boolean);
 
@@ -277,8 +278,16 @@ export const CreateTraining: React.FC = () => {
 
       validNames.forEach(name => {
           let waToUse = '';
-          const contact = savedContacts.find(c => c.name.toLowerCase() === name.toLowerCase());
-          if (contact) waToUse = contact.whatsapp;
+          
+          // PRIORITY 1: Check Manual Injection (From Modal Save)
+          if (manualContact && manualContact.name.toLowerCase() === name.toLowerCase()) {
+              waToUse = manualContact.whatsapp;
+          } 
+          // PRIORITY 2: Check Existing Contacts
+          else {
+              const contact = savedContacts.find(c => c.name.toLowerCase() === name.toLowerCase());
+              if (contact) waToUse = contact.whatsapp;
+          }
           
           if (!waToUse) {
               const existingFac = facilitators.find(f => f.name.toLowerCase() === name.toLowerCase());
@@ -334,8 +343,9 @@ export const CreateTraining: React.FC = () => {
       // Close modal
       setShowNewContactModal(false);
       
-      // Recursively call add with override to bypass stale state issues
-      setTimeout(() => addFacilitatorFromTop([pendingContactName]), 100); 
+      // Recursively call add with override AND the specific new contact object
+      // This ensures the WA number is available immediately even if state hasn't refreshed
+      setTimeout(() => addFacilitatorFromTop([pendingContactName], newContact), 100); 
   };
 
   const handleSkipNewContact = () => {
