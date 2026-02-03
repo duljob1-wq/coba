@@ -1,10 +1,9 @@
-
 import React, { useEffect, useState, useRef } from 'react';
 import { getTrainings, getResponses } from '../services/storageService';
 import { exportToPDF, exportToExcel, exportToWord } from '../services/exportService';
 import { Training } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
-import { LogOut, FileText, ChevronDown, Printer, FileIcon, FileSpreadsheet, Calendar, BookOpen, Search, LayoutDashboard, Users, RotateCcw, Eye } from 'lucide-react';
+import { LogOut, FileText, ChevronDown, Printer, FileIcon, FileSpreadsheet, Calendar, BookOpen, Search, LayoutDashboard, Users, RotateCcw, Eye, Archive, Clock, CheckCircle } from 'lucide-react';
 
 export const GuestDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -84,6 +83,18 @@ export const GuestDashboard: React.FC = () => {
   };
 
   const formatDateID = (dateStr: string) => { if (!dateStr) return ''; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); };
+
+  // --- HELPER: GET STATUS (Ongoing vs Finished) ---
+  const getTrainingStatus = (t: Training) => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (todayStr < t.startDate) {
+          return 'upcoming';
+      } else if (todayStr > t.endDate) {
+          return 'finished';
+      } else {
+          return 'ongoing';
+      }
+  };
 
   const filteredTrainings = trainings.filter(t => {
       const matchSearch = t.title.toLowerCase().includes(search.toLowerCase());
@@ -167,11 +178,37 @@ export const GuestDashboard: React.FC = () => {
          {activeTab === 'management' && (
              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3 animate-in fade-in">
                 {filteredTrainings.length > 0 ? (
-                    filteredTrainings.map(t => (
+                    filteredTrainings.map(t => {
+                        const status = getTrainingStatus(t);
+                        return (
                         <div key={t.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group hover:shadow-md transition-shadow">
                             <div className="absolute top-0 right-0 bg-slate-100 px-3 py-1.5 rounded-bl-xl border-l border-b border-slate-200"><span className="text-emerald-600 font-mono font-bold text-sm">{t.accessCode}</span></div>
                             <div className="p-6 pt-10 flex-1">
                                 <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2" title={t.title}>{t.title}</h3>
+                                
+                                {/* STATUS BADGE */}
+                                <div className="mb-3">
+                                    {status === 'ongoing' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200 animate-pulse">
+                                            <span className="relative flex h-2 w-2">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                            </span>
+                                            Sedang Berlangsung
+                                        </span>
+                                    )}
+                                    {status === 'finished' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200">
+                                            <Archive size={12}/> Selesai
+                                        </span>
+                                    )}
+                                    {status === 'upcoming' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-600 border border-amber-200">
+                                            <Clock size={12}/> Akan Datang
+                                        </span>
+                                    )}
+                                </div>
+
                                 <div className="space-y-2 mt-4 text-sm text-slate-500">
                                     <div className="flex items-center gap-2"><Calendar size={14} /> <span>{new Date(t.startDate).toLocaleDateString('id-ID')}</span></div>
                                     <div className="flex items-center gap-2"><Users size={14} /> <span>{t.facilitators.length} Fasilitator</span></div>
@@ -185,7 +222,7 @@ export const GuestDashboard: React.FC = () => {
                                 </Link>
                             </div>
                         </div>
-                    ))
+                    );})
                 ) : (
                     <div className="col-span-full py-12 text-center text-slate-400 italic bg-white rounded-2xl border border-dashed border-slate-300">Tidak ada data pelatihan yang sesuai filter.</div>
                 )}
@@ -201,9 +238,34 @@ export const GuestDashboard: React.FC = () => {
                             <tr><th className="px-6 py-4 font-semibold text-slate-700">Judul Pelatihan & Periode</th><th className="px-6 py-4 font-semibold text-slate-700">Responden</th><th className="px-6 py-4 text-right font-semibold text-slate-700">Aksi</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredTrainings.length > 0 ? (filteredTrainings.map(t => (
+                            {filteredTrainings.length > 0 ? (filteredTrainings.map(t => {
+                                    const status = getTrainingStatus(t);
+                                    return (
                                     <tr key={t.id} className="hover:bg-slate-50/50 transition">
-                                        <td className="px-6 py-4"><div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div><div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100 w-fit px-2 py-1 rounded"><Calendar size={12}/><span>{formatDateID(t.startDate)} - {formatDateID(t.endDate)}</span></div></td>
+                                        <td className="px-6 py-4">
+                                            <div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div>
+                                            {/* STATUS BADGE IN TABLE */}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100 w-fit px-2 py-1 rounded"><Calendar size={12}/><span>{formatDateID(t.startDate)} - {formatDateID(t.endDate)}</span></div>
+                                                
+                                                {status === 'ongoing' && (
+                                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                        <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span></span>
+                                                        Berlangsung
+                                                    </span>
+                                                )}
+                                                {status === 'finished' && (
+                                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200">
+                                                        <CheckCircle size={10}/> Selesai
+                                                    </span>
+                                                )}
+                                                {status === 'upcoming' && (
+                                                    <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-50 text-amber-600 border border-amber-200">
+                                                        <Clock size={10}/> Akan Datang
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4"><span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg text-xs font-bold">{responseCounts[t.id] || 0} Respon</span></td>
                                         <td className="px-6 py-4 text-right">
                                             <div className="flex items-center justify-end gap-3">
@@ -227,7 +289,8 @@ export const GuestDashboard: React.FC = () => {
                                             </div>
                                         </td>
                                     </tr>
-                                ))) : (<tr><td colSpan={3} className="text-center py-12 text-slate-400 italic">Tidak ada data pelatihan yang sesuai filter.</td></tr>)}
+                                )
+                            })) : (<tr><td colSpan={3} className="text-center py-12 text-slate-400 italic">Tidak ada data pelatihan yang sesuai filter.</td></tr>)}
                         </tbody>
                     </table>
                 </div>

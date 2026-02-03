@@ -3,7 +3,7 @@ import { getTrainings, deleteTraining, getResponses, getGlobalQuestions, saveGlo
 import { exportToPDF, exportToExcel, exportToWord } from '../services/exportService';
 import { Training, GlobalQuestion, QuestionType, Contact, AppSettings, TrainingTheme, Question, GuestEntry } from '../types';
 import * as XLSX from 'xlsx';
-import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe, PenTool, Briefcase, MapPin, Building2, User } from 'lucide-react';
+import { Plus, Trash2, Eye, Share2, LogOut, X, Check, Users, Calendar, Hash, Database, Pencil, LayoutDashboard, FileText, Settings, Search, Contact as ContactIcon, Phone, RotateCcw, Download, FileSpreadsheet, File as FileIcon, Printer, ChevronDown, MessageSquare, Upload, CloudDownload, AlertCircle, Copy as CopyIcon, Link as LinkIcon, Smartphone, List, Save, Layout, Layers, CheckCircle, BookOpen, Lock, Unlock, Shield, Key, Globe, PenTool, Briefcase, MapPin, Building2, User, Clock, Archive, UserPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import LZString from 'lz-string';
@@ -342,6 +342,18 @@ export const AdminDashboard: React.FC = () => {
 
   const formatDateID = (dateStr: string) => { if (!dateStr) return ''; return new Date(dateStr).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); };
 
+  // --- HELPER: GET STATUS (Ongoing vs Finished) ---
+  const getTrainingStatus = (t: Training) => {
+      const todayStr = new Date().toISOString().split('T')[0];
+      if (todayStr < t.startDate) {
+          return 'upcoming';
+      } else if (todayStr > t.endDate) {
+          return 'finished';
+      } else {
+          return 'ongoing';
+      }
+  };
+
   const filteredMgmtTrainings = trainings.filter(t => { const matchSearch = t.title.toLowerCase().includes(mgmtSearch.toLowerCase()); let matchDate = true; if (mgmtDateStart && mgmtDateEnd) { matchDate = (t.startDate <= mgmtDateEnd) && (t.endDate >= mgmtDateStart); } const matchMethod = filterMethod ? t.learningMethod === filterMethod : true; const matchLocation = filterLocation ? t.location === filterLocation : true; return matchSearch && matchDate && matchMethod && matchLocation; }).sort((a, b) => b.createdAt - a.createdAt);
   const filteredReportTrainings = trainings.filter(t => { const matchSearch = t.title.toLowerCase().includes(reportSearch.toLowerCase()); let matchDate = true; if (reportDateStart && reportDateEnd) { matchDate = (t.startDate <= reportDateEnd) && (t.endDate >= reportDateStart); } const matchMethod = reportFilterMethod ? t.learningMethod === reportFilterMethod : true; const matchLocation = reportFilterLocation ? t.location === reportFilterLocation : true; return matchSearch && matchDate && matchMethod && matchLocation; }).sort((a, b) => b.createdAt - a.createdAt);
   const filteredContacts = contacts.filter(c => c.name.toLowerCase().includes(contactSearch.toLowerCase()) || c.whatsapp.includes(contactSearch)).sort((a, b) => a.name.localeCompare(b.name));
@@ -354,6 +366,7 @@ export const AdminDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 font-sans flex flex-col">
       <nav className="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+          {/* ... Navbar content unchanged ... */}
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between h-16">
                   <div className="flex items-center gap-3">
@@ -394,12 +407,38 @@ export const AdminDashboard: React.FC = () => {
                     </div>
                 </div>
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredMgmtTrainings.map(t => (
+                    {filteredMgmtTrainings.map(t => {
+                        const status = getTrainingStatus(t);
+                        return (
                         <div key={t.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col relative overflow-hidden group">
                             <div className="absolute top-0 right-0 bg-slate-100 px-3 py-1.5 rounded-bl-xl border-l border-b border-slate-200"><span className="text-indigo-600 font-mono font-bold text-sm">{t.accessCode}</span></div>
                             <div className="p-6 pt-10 flex-1">
                                 <h3 className="text-lg font-bold text-slate-900 mb-2 line-clamp-2" title={t.title}>{t.title}</h3>
-                                <div className="space-y-2 mt-4 text-sm text-slate-500">
+                                
+                                {/* STATUS BADGE */}
+                                <div className="mb-3">
+                                    {status === 'ongoing' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-emerald-100 text-emerald-700 border border-emerald-200 animate-pulse">
+                                            <span className="relative flex h-2 w-2">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                            </span>
+                                            Sedang Berlangsung
+                                        </span>
+                                    )}
+                                    {status === 'finished' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200">
+                                            <Archive size={12}/> Selesai
+                                        </span>
+                                    )}
+                                    {status === 'upcoming' && (
+                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide bg-amber-50 text-amber-600 border border-amber-200">
+                                            <Clock size={12}/> Akan Datang
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="space-y-2 text-sm text-slate-500">
                                     <div className="flex items-center gap-2"><Calendar size={14} /> <span>{new Date(t.startDate).toLocaleDateString('id-ID')}</span></div>
                                     <div className="flex items-center gap-2"><Users size={14} /> <span>{t.facilitators.length} Fasilitator</span></div>
                                     {(t.learningMethod || t.location) && (<div className="flex flex-wrap gap-1 mt-2">{t.learningMethod && <span className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100">{t.learningMethod}</span>}{t.location && <span className="text-[10px] px-2 py-0.5 bg-purple-50 text-purple-700 rounded border border-purple-100">{t.location}</span>}</div>)}
@@ -410,203 +449,208 @@ export const AdminDashboard: React.FC = () => {
                                 <div className="flex gap-1"><Link to={`/admin/results/${t.id}`} className="p-2 text-slate-400 hover:text-indigo-600 transition"><Eye size={18}/></Link><button onClick={() => handleCopyTraining(t)} className="p-2 text-slate-400 hover:text-blue-600 transition"><CopyIcon size={18}/></button><Link to={`/admin/edit/${t.id}`} className="p-2 text-slate-400 hover:text-amber-600 transition"><Pencil size={18}/></Link><button onClick={() => { setDeleteTargetId(t.id); setDeleteAuthInput(''); }} className="p-2 text-slate-400 hover:text-red-600 transition"><Trash2 size={18}/></button></div>
                             </div>
                         </div>
-                    ))}
+                    );})}
                 </div>
             </div>
         )}
 
-        {/* ... Variables, Contacts, Reports, Guestbook, Security ... */}
-        {/* (All other tab contents remain unchanged, just ensure they are inside main) */}
+        {/* VARIABLES TAB */}
         {activeTab === 'variables' && (
-            <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
-                 {/* ... Variable Tab Content ... */}
-                 <div className="mb-6"><h2 className="text-2xl font-bold text-slate-800">Variabel Pelatihan</h2><p className="text-slate-500 text-sm">Kelola tema dan paket pertanyaan evaluasi.</p></div>
-                 <div className="flex items-center gap-2 mb-6"><button onClick={() => { setVariableSubTab('themes'); setIsEditingTheme(false); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${variableSubTab === 'themes' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}><List size={16} /> Tema Pelatihan</button><button onClick={() => setVariableSubTab('bank')} className={`px-4 py-2 rounded-lg text-sm font-bold transition flex items-center gap-2 ${variableSubTab === 'bank' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-100'}`}><Database size={16} /> Bank Pertanyaan Global</button></div>
-                 {variableSubTab === 'bank' && (<div className="animate-in fade-in"><div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8"><h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><Plus size={16} /> Tambah Variabel Global Baru</h3><div className="space-y-4"><div><label className="text-xs font-semibold text-slate-500 mb-1 block">Pertanyaan / Variabel</label><input type="text" value={newQVar.label} onChange={e => setNewQVar({...newQVar, label: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Contoh: Penguasaan Materi" /></div><div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end"><div className="md:col-span-1"><label className="text-xs font-semibold text-slate-500 mb-1 block">Kategori</label><div className="relative"><select value={newQVar.category} onChange={e => setNewQVar({...newQVar, category: e.target.value as 'facilitator'|'process'})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-2 focus:ring-indigo-500 outline-none"><option value="facilitator">Evaluasi Fasilitator</option><option value="process">Evaluasi Penyelenggaraan</option></select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div></div><div className="md:col-span-1"><label className="text-xs font-semibold text-slate-500 mb-1 block">Tipe Penilaian</label><div className="relative"><select value={newQVar.type} onChange={e => setNewQVar({...newQVar, type: e.target.value as QuestionType})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm appearance-none focus:ring-2 focus:ring-indigo-500 outline-none"><option value="star">★ Bintang</option><option value="slider">⸺ Skala 100</option><option value="text">¶ Teks</option></select><ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"/></div></div><div className="md:col-span-1 flex items-center h-[38px]"><label className="flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" checked={newQVar.isDefault} onChange={e => setNewQVar({...newQVar, isDefault: e.target.checked})} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 border-gray-300 cursor-pointer"/><div className="flex flex-col"><span className="text-sm font-semibold text-slate-700">Jadikan Default</span><span className="text-[10px] text-slate-400 leading-none">Otomatis di pelatihan baru</span></div></label></div><div className="md:col-span-1"><button onClick={handleSaveVariable} disabled={!newQVar.label} className="w-full bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition">Tambah</button></div></div></div></div><div className="bg-white rounded-2xl shadow-sm border divide-y">{globalQuestions.map(q => (<div key={q.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-50 gap-4"><div className="flex-1"><p className="text-sm font-bold text-slate-800">{q.label}</p><div className="flex items-center gap-2 mt-1"><span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${q.category === 'facilitator' ? 'bg-indigo-50 text-indigo-700' : 'bg-orange-50 text-orange-700'}`}>{q.category === 'facilitator' ? 'Fasilitator' : 'Penyelenggaraan'}</span>{q.isDefault && (<span className="flex items-center gap-1 text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100"><CheckCircle size={10} /> Default</span>)}</div></div><div className="flex items-center gap-3"><div className="relative"><select value={q.type} onChange={(e) => handleUpdateGlobalType(q, e.target.value as QuestionType)} className="appearance-none bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-lg py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer transition-all w-32 shadow-sm"><option value="star">★ Bintang</option><option value="slider">⸺ Skala</option><option value="text">¶ Teks</option></select><div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500"><ChevronDown size={14} /></div></div><button onClick={async () => { await deleteGlobalQuestion(q.id); refreshData(); }} className="text-slate-400 hover:text-red-500 p-2 transition bg-slate-50 rounded-lg hover:bg-red-50"><Trash2 size={16}/></button></div></div>))}</div></div>)}
-                 {variableSubTab === 'themes' && (<div className="animate-in fade-in">{isEditingTheme && activeTheme ? (<div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden"><div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><h3 className="font-bold text-slate-800">{activeTheme.name ? `Edit Tema: ${activeTheme.name}` : 'Buat Tema Baru'}</h3><button onClick={() => setIsEditingTheme(false)} className="p-1 hover:bg-slate-200 rounded-full"><X size={20}/></button></div><div className="p-6 space-y-6"><div><label className="block text-sm font-semibold text-slate-600 mb-2">Nama Tema Pelatihan</label><input type="text" value={activeTheme.name} onChange={(e) => setActiveTheme({...activeTheme, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Contoh: Pelatihan Teknis Medis"/></div><div className="grid md:grid-cols-2 gap-6"><div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><QuestionBuilder title="Variabel Fasilitator" questions={activeTheme.facilitatorQuestions} onChange={(qs) => setActiveTheme({...activeTheme, facilitatorQuestions: qs})} /></div><div className="bg-slate-50 p-4 rounded-xl border border-slate-100"><QuestionBuilder title="Variabel Penyelenggaraan" questions={activeTheme.processQuestions} onChange={(qs) => setActiveTheme({...activeTheme, processQuestions: qs})} /></div></div><div className="pt-4 border-t border-slate-100 flex justify-end gap-3"><button onClick={() => setIsEditingTheme(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Batal</button><button onClick={handleSaveTheme} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 flex items-center gap-2"><Save size={18}/> Simpan Tema</button></div></div></div>) : (<div className="space-y-4"><button onClick={handleCreateTheme} className="w-full py-3 border-2 border-dashed border-indigo-200 bg-indigo-50 text-indigo-600 rounded-xl font-bold hover:bg-indigo-100 transition flex items-center justify-center gap-2"><Plus size={20} /> Buat Tema Variabel Baru</button><div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{themes.map(t => (<div key={t.id} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-300 transition shadow-sm group relative"><div className="flex justify-between items-start mb-3"><h3 className="font-bold text-slate-800 text-lg">{t.name}</h3><div className="flex gap-1"><button onClick={() => handleEditTheme(t)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded bg-slate-50" title="Edit Tema"><Pencil size={16}/></button><button onClick={() => handleCopyTheme(t)} className="p-1.5 text-slate-400 hover:text-blue-600 rounded bg-slate-50" title="Salin Tema"><CopyIcon size={16}/></button><button onClick={() => handleDeleteTheme(t.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-slate-50" title="Hapus Tema"><Trash2 size={16}/></button></div></div><div className="space-y-2 text-xs text-slate-500"><p className="flex items-center gap-2"><Users size={14} className="text-indigo-400"/> {t.facilitatorQuestions.length} Variabel Fasilitator</p><p className="flex items-center gap-2"><Layout size={14} className="text-orange-400"/> {t.processQuestions.length} Variabel Penyelenggaraan</p></div></div>))}</div></div>)}</div>)}
+            <div className="animate-in fade-in duration-300">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                    <div>
+                        <h2 className="text-2xl font-bold text-slate-800">Variabel Pelatihan</h2>
+                        <p className="text-slate-500 text-sm">Kelola tema dan paket pertanyaan evaluasi.</p>
+                    </div>
+                </div>
+                
+                <div className="flex gap-3 mb-6">
+                    <button onClick={() => setVariableSubTab('themes')} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${variableSubTab === 'themes' ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        <List size={18}/> Tema Pelatihan
+                    </button>
+                    <button onClick={() => setVariableSubTab('bank')} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm ${variableSubTab === 'bank' ? 'bg-indigo-600 text-white shadow-indigo-200' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                        <Database size={18}/> Bank Pertanyaan Global
+                    </button>
+                </div>
+
+                {variableSubTab === 'themes' && (
+                    isEditingTheme && activeTheme ? (
+                        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+                            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                                <h3 className="text-lg font-bold text-slate-800">{activeTheme.id ? 'Edit Tema' : 'Buat Tema Baru'}</h3>
+                                <button onClick={() => { setIsEditingTheme(false); setActiveTheme(null); }} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Nama Tema</label>
+                                <input type="text" value={activeTheme.name} onChange={e => setActiveTheme({...activeTheme, name: e.target.value})} className="w-full border border-slate-300 rounded-xl px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" placeholder="Contoh: Pelatihan Teknis..." />
+                            </div>
+                            <div className="grid md:grid-cols-2 gap-8">
+                                <QuestionBuilder title="Pertanyaan Fasilitator" questions={activeTheme.facilitatorQuestions} onChange={(qs) => setActiveTheme({...activeTheme, facilitatorQuestions: qs})} />
+                                <QuestionBuilder title="Pertanyaan Penyelenggaraan" questions={activeTheme.processQuestions} onChange={(qs) => setActiveTheme({...activeTheme, processQuestions: qs})} />
+                            </div>
+                            <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
+                                <button onClick={() => { setIsEditingTheme(false); setActiveTheme(null); }} className="px-6 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold hover:bg-slate-50">Batal</button>
+                                <button onClick={handleSaveTheme} className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-lg flex items-center gap-2"><Save size={18}/> Simpan Tema</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <button onClick={handleCreateTheme} className="w-full py-4 border-2 border-dashed border-indigo-200 bg-indigo-50 rounded-2xl text-indigo-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-indigo-100 hover:border-indigo-300 transition-all mb-6">
+                                <Plus size={20}/> Buat Tema Variabel Baru
+                            </button>
+                            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                                {themes.map(t => (
+                                    <div key={t.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col hover:shadow-md transition-shadow">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <h3 className="font-bold text-slate-800 text-lg">{t.name}</h3>
+                                            <div className="flex items-center gap-1">
+                                                <button onClick={() => handleEditTheme(t)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"><Pencil size={16}/></button>
+                                                <button onClick={() => handleCopyTheme(t)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Duplikat"><CopyIcon size={16}/></button>
+                                                <button onClick={() => handleDeleteTheme(t.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 size={16}/></button>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-3 text-sm text-slate-600">
+                                                <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><User size={16}/></div>
+                                                <span>{t.facilitatorQuestions.length} Variabel Fasilitator</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-sm text-slate-600">
+                                                <div className="p-1.5 bg-orange-50 text-orange-600 rounded-lg"><Layout size={16}/></div>
+                                                <span>{t.processQuestions.length} Variabel Penyelenggaraan</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )
+                )}
+
+                {variableSubTab === 'bank' && (
+                    <div className="grid md:grid-cols-2 gap-8">
+                        {['facilitator', 'process'].map((cat) => (
+                            <div key={cat} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                                <div className={`px-6 py-4 border-b border-slate-100 font-bold uppercase tracking-wide flex items-center gap-2 ${cat === 'facilitator' ? 'bg-indigo-50 text-indigo-700' : 'bg-orange-50 text-orange-700'}`}>
+                                    {cat === 'facilitator' ? <User size={18}/> : <Layout size={18}/>} Bank {cat === 'facilitator' ? 'Fasilitator' : 'Penyelenggaraan'}
+                                </div>
+                                <div className="p-4 bg-slate-50/50 border-b border-slate-100">
+                                    <div className="flex gap-2">
+                                        <input type="text" value={newQVar.category === cat ? newQVar.label : ''} onChange={e => setNewQVar({ ...newQVar, category: cat as any, label: e.target.value })} placeholder="Tambah variabel baru..." className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" onKeyDown={e => e.key === 'Enter' && handleSaveVariable()} />
+                                        <select value={newQVar.category === cat ? newQVar.type : 'star'} onChange={e => setNewQVar({ ...newQVar, category: cat as any, type: e.target.value as QuestionType })} className="border border-slate-300 rounded-lg px-2 py-2 text-sm">
+                                            <option value="star">★</option><option value="slider">⸺</option><option value="text">¶</option>
+                                        </select>
+                                        <button onClick={handleSaveVariable} className="bg-slate-800 text-white p-2 rounded-lg hover:bg-black"><Plus size={18}/></button>
+                                    </div>
+                                </div>
+                                <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
+                                    {globalQuestions.filter(q => q.category === cat).map(q => (
+                                        <div key={q.id} className="px-6 py-3 flex items-center justify-between hover:bg-slate-50 group">
+                                            <div className="flex items-center gap-3">
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${q.type === 'star' ? 'bg-yellow-100 text-yellow-700' : q.type === 'slider' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>{q.type === 'star' ? 'Star' : q.type === 'slider' ? '0-100' : 'Teks'}</span>
+                                                <span className="text-sm font-medium text-slate-700">{q.label}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="relative group/type">
+                                                    <button className="p-1.5 text-slate-400 hover:text-indigo-600 rounded"><Settings size={14}/></button>
+                                                    <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg z-10 hidden group-hover/type:block">
+                                                        <button onClick={() => handleUpdateGlobalType(q, 'star')} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">Ubah ke Bintang</button>
+                                                        <button onClick={() => handleUpdateGlobalType(q, 'slider')} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">Ubah ke Skala</button>
+                                                        <button onClick={() => handleUpdateGlobalType(q, 'text')} className="block w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50">Ubah ke Teks</button>
+                                                    </div>
+                                                </div>
+                                                <button onClick={() => deleteGlobalQuestion(q.id).then(refreshData)} className="p-1.5 text-slate-400 hover:text-red-600 rounded bg-white border border-slate-200 hover:bg-red-50"><Trash2 size={14}/></button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {globalQuestions.filter(q => q.category === cat).length === 0 && <div className="p-6 text-center text-slate-400 italic text-sm">Belum ada variabel.</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         )}
 
-        {/* ... Contacts Tab ... */}
+        {/* CONTACTS TAB */}
         {activeTab === 'contacts' && (
-            <div className="animate-in fade-in duration-300 max-w-5xl mx-auto">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div className="animate-in fade-in duration-300">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                     <div>
-                        <h2 className="text-2xl font-bold text-slate-800">Manajemen Kontak</h2>
-                        <p className="text-slate-500 text-sm">Database nomor WhatsApp fasilitator untuk fitur autocomplete.</p>
+                        <h2 className="text-2xl font-bold text-slate-800">Database Kontak</h2>
+                        <p className="text-slate-500 text-sm">Kelola daftar kontak fasilitator dan penanggung jawab.</p>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={handleExportContacts} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center gap-2">
-                            <Download size={16}/> Export
-                        </button>
-                        <button onClick={() => contactFileInputRef.current?.click()} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center gap-2">
-                            <Upload size={16}/> Import
-                        </button>
+                        <button onClick={handleExportContacts} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm flex items-center gap-2"><Download size={16}/> Export Excel</button>
+                        <button onClick={() => contactFileInputRef.current?.click()} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 text-sm flex items-center gap-2"><Upload size={16}/> Import Excel</button>
                         <input type="file" ref={contactFileInputRef} onChange={handleImportContacts} className="hidden" accept=".xlsx, .xls" />
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    {/* Form Section */}
-                    <div className="lg:col-span-5">
-                        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 sticky top-24">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Plus size={18} className="text-indigo-600"/> Tambah Kontak
-                            </h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NAMA LENGKAP + GELAR</label>
-                                    <input 
-                                        type="text" 
-                                        value={newContact.name} 
-                                        onChange={e => setNewContact({...newContact, name: e.target.value})} 
-                                        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                                        placeholder="Nama Fasilitator..."
-                                    />
-                                    {isDuplicateName && <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1"><AlertCircle size={10}/> Nama ini mungkin sudah ada.</p>}
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nomor WhatsApp</label>
-                                    <div className="flex gap-2">
-                                        <div className="relative shrink-0">
-                                            <select 
-                                                value={selectedCountryCode}
-                                                onChange={handleCountryChange}
-                                                className="appearance-none border border-slate-300 rounded-lg pl-3 pr-6 py-2 text-sm font-bold bg-slate-50 text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                                            >
-                                                {COUNTRY_CODES.map(c => (
-                                                    <option key={c.code} value={c.code}>{c.code}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown size={12} className="text-slate-500 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"/>
-                                        </div>
-                                        <input 
-                                            type="text" 
-                                            value={newContact.whatsapp} 
-                                            onChange={e => handleWaInput(e.target.value)} 
-                                            className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-mono" 
-                                            placeholder="08..."
-                                        />
-                                    </div>
-                                    <p className="text-[10px] text-slate-400 mt-1">Bisa diisi 08.., 628.. atau +628... (Auto-format saat simpan)</p>
-                                    {isDuplicatePhone && <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1"><AlertCircle size={10}/> Nomor ini sudah terdaftar.</p>}
-                                </div>
-
-                                {/* Extra Information Toggle */}
-                                <div>
-                                    <button 
-                                        onClick={() => setShowExtraFields(!showExtraFields)}
-                                        className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 mb-2"
-                                    >
-                                        {showExtraFields ? <ChevronDown size={14} className="rotate-180"/> : <ChevronDown size={14}/>}
-                                        {showExtraFields ? 'Sembunyikan Detail Tambahan' : 'Tambah Detail (Jabatan, Unit, Alamat)'}
-                                    </button>
-                                    
-                                    {showExtraFields && (
-                                        <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-100 animate-in fade-in slide-in-from-top-2">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jabatan</label>
-                                                <input type="text" value={newContact.jobTitle || ''} onChange={e => setNewContact({...newContact, jobTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Widyaiswara Ahli Madya..."/>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unit Kerja</label>
-                                                <input type="text" value={newContact.unit || ''} onChange={e => setNewContact({...newContact, unit: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="UPT Pelkesmas..."/>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Alamat</label>
-                                                <textarea value={newContact.address || ''} onChange={e => setNewContact({...newContact, address: e.target.value})} className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none resize-none h-16" placeholder="Jl. Indrapura..."/>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <button 
-                                    onClick={handleSaveContact} 
-                                    disabled={!newContact.name} 
-                                    className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    Simpan Kontak
-                                </button>
+                <div className="grid lg:grid-cols-3 gap-6 items-start">
+                    {/* Add Contact Form */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 lg:sticky lg:top-24">
+                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><UserPlus size={18} className="text-indigo-600"/> Tambah Kontak Baru</h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Lengkap & Gelar</label>
+                                <input type="text" value={newContact.name} onChange={e => setNewContact({...newContact, name: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Dr. Fulan, S.Kom..." />
                             </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">WhatsApp</label>
+                                <div className="flex gap-2 mb-2">
+                                    <select value={selectedCountryCode} onChange={handleCountryChange} className="border border-slate-300 rounded-lg px-2 py-2 text-sm bg-slate-50 font-medium w-32">
+                                        {COUNTRY_CODES.map(c => (<option key={c.code} value={c.code}>{c.flag} {c.dial}</option>))}
+                                    </select>
+                                    <input type="text" value={newContact.whatsapp} onChange={e => handleWaInput(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="08..." />
+                                </div>
+                            </div>
+                            
+                            <button onClick={() => setShowExtraFields(!showExtraFields)} className="text-xs font-bold text-indigo-600 hover:underline flex items-center gap-1">
+                                {showExtraFields ? <ChevronDown size={14} className="rotate-180"/> : <ChevronDown size={14}/>} {showExtraFields ? 'Sembunyikan Detail' : 'Tampilkan Detail Lainnya'}
+                            </button>
+
+                            {showExtraFields && (
+                                <div className="space-y-3 animate-in fade-in slide-in-from-top-2 pt-2">
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jabatan</label><input type="text" value={newContact.jobTitle || ''} onChange={e => setNewContact({...newContact, jobTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Widyaiswara..." /></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unit Kerja</label><input type="text" value={newContact.unit || ''} onChange={e => setNewContact({...newContact, unit: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm" placeholder="Bapelkes..." /></div>
+                                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Alamat</label><textarea value={newContact.address || ''} onChange={e => setNewContact({...newContact, address: e.target.value})} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none h-16" placeholder="Jl..." /></div>
+                                </div>
+                            )}
+
+                            <button onClick={handleSaveContact} disabled={!newContact.name} className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg shadow-indigo-200 mt-2 disabled:bg-slate-300 disabled:shadow-none transition-all">Simpan Kontak</button>
                         </div>
                     </div>
 
-                    {/* List Section */}
-                    <div className="lg:col-span-7 space-y-4">
+                    {/* Contact List */}
+                    <div className="lg:col-span-2 space-y-4">
                         <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18}/>
-                            <input 
-                                type="text" 
-                                value={contactSearch} 
-                                onChange={e => setContactSearch(e.target.value)} 
-                                placeholder="Cari kontak..." 
-                                className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none bg-white shadow-sm"
-                            />
+                            <input type="text" value={contactSearch} onChange={e => setContactSearch(e.target.value)} placeholder="Cari nama atau nomor..." className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm shadow-sm" />
                         </div>
-
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                            {filteredContacts.length === 0 ? (
-                                <div className="p-8 text-center text-slate-400 italic">
-                                    Tidak ada kontak ditemukan.
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-slate-100">
-                                    {filteredContacts.map(c => (
-                                        <div 
-                                            key={c.id} 
-                                            className="p-4 flex items-center justify-between hover:bg-slate-50 transition group cursor-pointer"
-                                            onDoubleClick={() => openContactDetail(c)}
-                                            title="Klik 2x untuk lihat detail"
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                                                    {c.name.charAt(0)}
+                            <div className="max-h-[600px] overflow-y-auto divide-y divide-slate-100">
+                                {filteredContacts.length === 0 && <div className="p-8 text-center text-slate-400 italic">Tidak ada kontak ditemukan.</div>}
+                                {filteredContacts.map(c => (
+                                    <div key={c.id} className="p-4 hover:bg-slate-50 transition flex items-center justify-between group">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm shadow-sm">{c.name.charAt(0)}</div>
+                                            <div>
+                                                <h4 className="font-bold text-slate-800 text-sm">{c.name}</h4>
+                                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 mt-0.5">
+                                                    {c.whatsapp && <span className="text-xs text-green-600 font-mono flex items-center gap-1"><Smartphone size={12}/> {c.whatsapp}</span>}
+                                                    {c.unit && <span className="text-xs text-slate-500 flex items-center gap-1"><Building2 size={12}/> {c.unit}</span>}
                                                 </div>
-                                                <div>
-                                                    <h4 className="font-bold text-slate-800 text-sm">{c.name}</h4>
-                                                    <div className="flex flex-col gap-0.5">
-                                                        <p className="text-xs text-slate-500 font-mono flex items-center gap-1">
-                                                            <Phone size={10}/> {c.whatsapp || '-'}
-                                                        </p>
-                                                        {c.jobTitle && <p className="text-[10px] text-slate-400 flex items-center gap-1"><Briefcase size={10}/> {c.jobTitle}</p>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); openContactDetail(c); }} 
-                                                    className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
-                                                    title="Edit / Detail"
-                                                >
-                                                    <Pencil size={16}/>
-                                                </button>
-                                                {c.whatsapp && (
-                                                    <a 
-                                                        href={`https://wa.me/${c.whatsapp}`} 
-                                                        target="_blank" 
-                                                        rel="noreferrer" 
-                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                                        title="Chat WA"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                    >
-                                                        <MessageSquare size={16}/>
-                                                    </a>
-                                                )}
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteContact(c); }} 
-                                                    className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                                                    title="Hapus"
-                                                >
-                                                    <Trash2 size={16}/>
-                                                </button>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-center text-xs text-slate-400">
-                            Menampilkan {filteredContacts.length} dari {contacts.length} kontak. (Klik 2x untuk detail)
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => openContactDetail(c)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="Edit Detail"><Pencil size={16}/></button>
+                                            <button onClick={() => handleDeleteContact(c)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Hapus"><Trash2 size={16}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 text-center font-medium">Total: {filteredContacts.length} Kontak</div>
                         </div>
                     </div>
                 </div>
@@ -622,7 +666,7 @@ export const AdminDashboard: React.FC = () => {
                         <PenTool size={16} /> Konfigurasi TTD
                     </button>
                 </div>
-                {/* ... Reports Filter & Table (Unchanged) ... */}
+                {/* ... Reports Filter (Unchanged) ... */}
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6">
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                         <div className="md:col-span-4 relative"><label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">Cari Pelatihan</label><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14}/><input type="text" value={reportSearch} onChange={e => setReportSearch(e.target.value)} placeholder="Nama pelatihan..." className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs" /></div></div>
@@ -640,9 +684,35 @@ export const AdminDashboard: React.FC = () => {
                             <tr><th className="px-6 py-4 font-semibold text-slate-700 first:rounded-tl-2xl">Judul Pelatihan & Periode</th><th className="px-6 py-4 font-semibold text-slate-700">Responden</th><th className="px-6 py-4 text-right font-semibold text-slate-700 last:rounded-tr-2xl">Aksi</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredReportTrainings.map(t => (
+                            {filteredReportTrainings.map(t => {
+                                const status = getTrainingStatus(t);
+                                return (
                                 <tr key={t.id} className="hover:bg-slate-50/50 transition">
-                                    <td className="px-6 py-4"><div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div><div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100 w-fit px-2 py-1 rounded"><Calendar size={12}/><span>{formatDateID(t.startDate)} - {formatDateID(t.endDate)}</span></div></td>
+                                    <td className="px-6 py-4">
+                                        <div className="font-bold text-slate-800 text-sm mb-1">{t.title}</div>
+                                        
+                                        {/* STATUS BADGE IN TABLE */}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-100 w-fit px-2 py-1 rounded"><Calendar size={12}/><span>{formatDateID(t.startDate)} - {formatDateID(t.endDate)}</span></div>
+                                            
+                                            {status === 'ongoing' && (
+                                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                    <span className="relative flex h-1.5 w-1.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span></span>
+                                                    Berlangsung
+                                                </span>
+                                            )}
+                                            {status === 'finished' && (
+                                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-slate-100 text-slate-500 border border-slate-200">
+                                                    <CheckCircle size={10}/> Selesai
+                                                </span>
+                                            )}
+                                            {status === 'upcoming' && (
+                                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-50 text-amber-600 border border-amber-200">
+                                                    <Clock size={10}/> Akan Datang
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4"><span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-lg text-xs font-bold">{responseCounts[t.id] || 0} Respon</span></td>
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3">
@@ -666,7 +736,7 @@ export const AdminDashboard: React.FC = () => {
                                         </div>
                                     </td>
                                 </tr>
-                            ))}
+                            );})}
                             {filteredReportTrainings.length === 0 && (<tr><td colSpan={3} className="px-6 py-8 text-center text-slate-400 italic">Tidak ada data pelatihan yang sesuai filter.</td></tr>)}
                         </tbody>
                     </table>
