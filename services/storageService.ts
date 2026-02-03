@@ -272,6 +272,112 @@ export const renameFacilitator = async (trainingId: string, oldName: string, new
     }
 };
 
+// --- NEW FEATURE: TOGGLE VISIBILITY (SUPERADMIN) ---
+export const toggleFacilitatorVisibility = async (trainingId: string, facilitatorName: string, isHidden: boolean): Promise<void> => {
+    try {
+        const trainingRef = doc(db, 'trainings', trainingId);
+        const trainingSnap = await getDoc(trainingRef);
+        
+        if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
+        
+        const trainingData = trainingSnap.data() as Training;
+        // Update all entries with this name (incase of multiple subjects)
+        const updatedFacilitators = trainingData.facilitators.map(f => 
+            f.name === facilitatorName ? { ...f, isHidden: isHidden } : f
+        );
+        
+        await setDoc(trainingRef, { ...trainingData, facilitators: updatedFacilitators });
+    } catch (error) {
+        console.error("Error toggling visibility:", error);
+        throw error;
+    }
+};
+
+// --- NEW FEATURE: UPDATE SUBJECT / MATERI (SUPERADMIN) ---
+export const updateFacilitatorSubject = async (
+    trainingId: string, 
+    facilitatorName: string, 
+    oldSubject: string, 
+    newSubject: string
+): Promise<void> => {
+    try {
+        if (oldSubject === newSubject) return;
+        const batch = writeBatch(db);
+
+        // 1. Update Training Document
+        const trainingRef = doc(db, 'trainings', trainingId);
+        const trainingSnap = await getDoc(trainingRef);
+        if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
+        
+        const trainingData = trainingSnap.data() as Training;
+        
+        // Find the specific entry by Name AND Subject
+        const updatedFacilitators = trainingData.facilitators.map(f => 
+            (f.name === facilitatorName && f.subject === oldSubject) 
+                ? { ...f, subject: newSubject } 
+                : f
+        );
+        
+        batch.update(trainingRef, { facilitators: updatedFacilitators });
+
+        // 2. Update Related Responses
+        const q = query(
+            collection(db, 'responses'), 
+            where('trainingId', '==', trainingId),
+            where('targetName', '==', facilitatorName),
+            where('targetSubject', '==', oldSubject)
+        );
+        const snapshot = await getDocs(q);
+
+        snapshot.docs.forEach((doc) => {
+            batch.update(doc.ref, { targetSubject: newSubject });
+        });
+
+        await batch.commit();
+    } catch (error) {
+        console.error("Error updating subject:", error);
+        throw error;
+    }
+};
+
+// --- NEW FEATURE: SYNC METADATA UPDATE (CreateTraining) ---
+export const updateResponseMetadata = async (
+    trainingId: string, 
+    oldName: string, 
+    oldSubject: string, 
+    newName: string, 
+    newSubject: string
+): Promise<void> => {
+    try {
+        if (oldName === newName && oldSubject === newSubject) return;
+
+        const q = query(
+            collection(db, 'responses'),
+            where('trainingId', '==', trainingId),
+            where('type', '==', 'facilitator'),
+            where('targetName', '==', oldName),
+            where('targetSubject', '==', oldSubject)
+        );
+
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) return;
+
+        const batch = writeBatch(db);
+        snapshot.docs.forEach((doc) => {
+            batch.update(doc.ref, { 
+                targetName: newName,
+                targetSubject: newSubject
+            });
+        });
+
+        await batch.commit();
+        console.log(`Updated responses for ${oldName} (${oldSubject}) -> ${newName} (${newSubject})`);
+    } catch (error) {
+        console.error("Error updating response metadata:", error);
+        throw error;
+    }
+};
+
 // --- GLOBAL QUESTIONS ---
 
 export const getGlobalQuestions = async (): Promise<GlobalQuestion[]> => {

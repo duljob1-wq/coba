@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 import { Facilitator, Question, Training, Contact, TrainingTheme } from '../types';
-import { saveTraining, getTrainingById, getGlobalQuestions, getContacts, saveContact, getSettings, getTrainings, getThemes } from '../services/storageService';
+import { saveTraining, getTrainingById, getGlobalQuestions, getContacts, saveContact, getSettings, getTrainings, getThemes, updateResponseMetadata } from '../services/storageService';
 import { QuestionBuilder } from '../components/QuestionBuilder';
-import { ArrowLeft, Save, Plus, X, Calendar, UserPlus, Settings, CheckCircle, Lock, Unlock, MessageSquare, Trash2, FileText, Edit2, Phone, ChevronDown, Check, FolderOpen, Clock, Hash, UserCheck, MapPin, Monitor, User, PenTool } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Calendar, UserPlus, Settings, CheckCircle, Lock, Unlock, MessageSquare, Trash2, FileText, Edit2, Phone, ChevronDown, Check, FolderOpen, Clock, Hash, UserCheck, MapPin, Monitor, User, PenTool, RefreshCw } from 'lucide-react';
 
 export const CreateTraining: React.FC = () => {
   const navigate = useNavigate();
@@ -31,12 +31,14 @@ export const CreateTraining: React.FC = () => {
   const [currentAccessCode, setCurrentAccessCode] = useState<string>('');
   const [createdAt, setCreatedAt] = useState<number>(Date.now());
   const [currentReportedTargets, setCurrentReportedTargets] = useState<Record<string, boolean>>({});
+  const [isSaving, setIsSaving] = useState(false);
   
   // Config State
   const [allowManualInput, setAllowManualInput] = useState(false); // Default false
 
   // Facilitators
   const [facilitators, setFacilitators] = useState<Facilitator[]>([]);
+  const [originalFacilitators, setOriginalFacilitators] = useState<Facilitator[]>([]); // Track original state for edits
   
   // --- FORM STATE FOR TOP INPUT (DYNAMIC ARRAYS) ---
   const [facNames, setFacNames] = useState<string[]>(['']); // Array for names
@@ -147,6 +149,9 @@ export const CreateTraining: React.FC = () => {
             setParticipantLimit(data.participantLimit ? data.participantLimit.toString() : ''); 
             setProcessDate(data.processEvaluationDate || data.endDate); 
             setFacilitators(data.facilitators);
+            // Deep copy for original state tracking
+            setOriginalFacilitators(JSON.parse(JSON.stringify(data.facilitators)));
+            
             setFacilitatorQuestions(data.facilitatorQuestions);
             setProcessQuestions(data.processQuestions);
             setTargets(data.targets || []);
@@ -376,10 +381,43 @@ export const CreateTraining: React.FC = () => {
   const removeProcessTarget = (val: number) => setProcessTargets(processTargets.filter(t => t !== val));
 
   const handleSave = async () => {
+    setIsSaving(true);
     const existingTrainings = await getTrainings();
     const isDuplicate = existingTrainings.some(t => t.title.toLowerCase().trim() === title.toLowerCase().trim() && t.id !== currentId);
-    if (isDuplicate && !confirm(`Peringatan: Nama pelatihan "${title}" sudah ada dalam daftar. Tetap lanjutkan?`)) return;
-    if (facilitators.length === 0 && !confirm("Anda belum menambahkan fasilitator. Tetap lanjutkan?")) return;
+    if (isDuplicate && !confirm(`Peringatan: Nama pelatihan "${title}" sudah ada dalam daftar. Tetap lanjutkan?`)) { setIsSaving(false); return; }
+    if (facilitators.length === 0 && !confirm("Anda belum menambahkan fasilitator. Tetap lanjutkan?")) { setIsSaving(false); return; }
+
+    // --- NEW LOGIC: Update Metadata in Existing Responses ---
+    if (trainingId) { // Only checking if in EDIT mode
+        const updates: Promise<void>[] = [];
+        
+        // Loop through current facilitators to find changes
+        for (const fac of facilitators) {
+            // Find the original state of this facilitator by ID
+            const original = originalFacilitators.find(o => o.id === fac.id);
+            
+            if (original) {
+                // Check if Name or Subject has changed
+                if (original.name !== fac.name || original.subject !== fac.subject) {
+                    updates.push(
+                        updateResponseMetadata(
+                            currentId,
+                            original.name,
+                            original.subject,
+                            fac.name,
+                            fac.subject
+                        )
+                    );
+                }
+            }
+        }
+
+        if (updates.length > 0) {
+            console.log(`Processing ${updates.length} facilitator updates for existing responses...`);
+            await Promise.all(updates);
+        }
+    }
+    // --- END NEW LOGIC ---
 
     let pOrganizer: Contact | undefined = undefined;
     if (processOrganizerName) pOrganizer = { id: uuidv4(), name: processOrganizerName, whatsapp: processOrganizerWa };
@@ -395,6 +433,7 @@ export const CreateTraining: React.FC = () => {
     };
 
     await saveTraining(newTraining);
+    setIsSaving(false);
     navigate('/admin/dashboard');
   };
 
@@ -406,7 +445,7 @@ export const CreateTraining: React.FC = () => {
               <button onClick={() => navigate('/admin/dashboard')} className="p-2 hover:bg-slate-100 rounded-full transition text-slate-500"><ArrowLeft size={20} /></button>
               <h1 className="text-lg font-bold text-slate-800">{trainingId ? 'Edit Pelatihan' : 'Buat Pelatihan Baru'}</h1>
            </div>
-           {step === 2 && (<button onClick={handleSave} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-md transition flex items-center gap-2"><Save size={18} /> Simpan Data</button>)}
+           {step === 2 && (<button onClick={handleSave} disabled={isSaving} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 shadow-md transition flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">{isSaving ? <RefreshCw size={18} className="animate-spin"/> : <Save size={18} />} {isSaving ? 'Menyimpan...' : 'Simpan Data'}</button>)}
         </div>
       </div>
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
