@@ -246,8 +246,11 @@ export const ResultsView: React.FC = () => {
           groupedSessions['Penyelenggaraan|Umum'] = filteredResponses;
       } else {
           filteredResponses.forEach(r => {
-              const name = r.targetName || 'Umum';
-              const subject = r.targetSubject || 'Umum';
+              // NORMALIZE STRINGS: Trim whitespace to merge "Name " and "Name"
+              // This fixes the duplicate card issue if data is identical but has trailing spaces
+              const name = (r.targetName || 'Umum').trim();
+              const subject = (r.targetSubject || 'Umum').trim();
+              
               const key = `${name}|${subject}`;
               if (!groupedSessions[key]) groupedSessions[key] = [];
               groupedSessions[key].push(r);
@@ -261,11 +264,20 @@ export const ResultsView: React.FC = () => {
           let isHidden = false;
 
           if (activeTab === 'facilitator') {
-              const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
-              if (facData) {
-                  date = facData.sessionDate;
-                  // Explicitly convert to boolean to ensure safety
-                  isHidden = !!facData.isHidden;
+              // SMART METADATA LOOKUP
+              // 1. Find all configured facilitators that match this Name & Subject (case-insensitive & trimmed)
+              const matchingFacs = training.facilitators.filter(f => 
+                  f.name.trim().toLowerCase() === name.toLowerCase() && 
+                  f.subject.trim().toLowerCase() === subject.toLowerCase()
+              );
+
+              // 2. Prioritize the entry that has a sessionDate set
+              // This merges data with the correct date even if duplicates exist in config
+              const bestMatch = matchingFacs.find(f => f.sessionDate) || matchingFacs[0];
+
+              if (bestMatch) {
+                  date = bestMatch.sessionDate;
+                  isHidden = !!bestMatch.isHidden;
               }
           }
           const overall = calculateOverall(items, effectiveQuestions);
@@ -273,7 +285,6 @@ export const ResultsView: React.FC = () => {
       });
 
       // FILTER HIDDEN SESSIONS FOR NON-SUPERADMINS
-      // Only Superadmin can see hidden sessions. Everyone else (Admin/Guest) sees strictly filtered list.
       if (!isSuperAdmin) {
           sessions = sessions.filter(s => !s.isHidden);
       }
@@ -301,9 +312,6 @@ export const ResultsView: React.FC = () => {
           let totalSessionAvg = 0;
           let sessionCount = 0;
           flatSessions.forEach(session => {
-              // IMPORTANT: Exclude hidden sessions from Grand Average calculation
-              // This ensures the displayed average is consistent with the "Official" visible report,
-              // even if the Superadmin can see the hidden cards.
               if (session.isHidden) return;
 
               let sessionTotalScore = 0;
