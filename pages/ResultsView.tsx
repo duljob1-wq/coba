@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining, renameFacilitator } from '../services/storageService';
+import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining, renameFacilitator, toggleFacilitatorVisibility } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
 import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square, BarChart2, Edit2, Check } from 'lucide-react';
 
@@ -128,6 +128,7 @@ interface SessionData {
     subject: string;
     date: string;
     items: Response[];
+    isHidden?: boolean; // Added property for session
     overall: {
         starAvg: number;
         sliderAvg: number;
@@ -252,13 +253,23 @@ export const ResultsView: React.FC = () => {
           const [name, subject] = key.split('|');
           const items = groupedSessions[key];
           let date = '';
+          let isHidden = false;
+
           if (activeTab === 'facilitator') {
               const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
-              if (facData) date = facData.sessionDate;
+              if (facData) {
+                  date = facData.sessionDate;
+                  isHidden = !!facData.isHidden;
+              }
           }
           const overall = calculateOverall(items, effectiveQuestions);
-          return { name, subject, date, items, overall };
+          return { name, subject, date, items, overall, isHidden };
       });
+
+      // FILTER HIDDEN SESSIONS FOR NON-SUPERADMINS
+      if (!isSuperAdmin) {
+          sessions = sessions.filter(s => !s.isHidden);
+      }
 
       sessions.sort((a, b) => {
           if (activeTab === 'process') return 0;
@@ -273,7 +284,7 @@ export const ResultsView: React.FC = () => {
           return orderA - orderB;
       });
       return sessions;
-  }, [training, filteredResponses, activeTab, effectiveQuestions]);
+  }, [training, filteredResponses, activeTab, effectiveQuestions, isSuperAdmin]);
 
   const grandStats = useMemo(() => {
       let grandAvg = 0;
@@ -283,6 +294,8 @@ export const ResultsView: React.FC = () => {
           let totalSessionAvg = 0;
           let sessionCount = 0;
           flatSessions.forEach(session => {
+              // Exclude hidden sessions from Grand Average calculation even for Superadmin (optional, but cleaner)
+              // Currently if Superadmin sees them, they contribute. Let's keep it consistent: what is visible contributes.
               let sessionTotalScore = 0;
               let sessionMetricCount = 0;
               effectiveQuestions.forEach(q => {
@@ -345,15 +358,13 @@ export const ResultsView: React.FC = () => {
       try {
           await renameFacilitator(training.id, renamingTarget, renameInput.trim());
           
-          // Update Local State directly to reflect changes without reload
-          // 1. Update Training
+          // Update Local State
           const updatedTraining = { ...training };
           updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
               f.name === renamingTarget ? { ...f, name: renameInput.trim() } : f
           );
           setTraining(updatedTraining);
 
-          // 2. Update Responses
           const updatedResponses = responses.map(r => 
               r.targetName === renamingTarget ? { ...r, targetName: renameInput.trim() } : r
           );
@@ -365,6 +376,30 @@ export const ResultsView: React.FC = () => {
           console.error(error);
       } finally {
           setIsSavingName(false);
+      }
+  };
+
+  // --- TOGGLE VISIBILITY HANDLER (SUPERADMIN) ---
+  const handleToggleVisibility = async (name: string, currentHidden: boolean) => {
+      if (!training) return;
+      const confirmMsg = currentHidden 
+          ? `Tampilkan kembali rekap untuk "${name}"?` 
+          : `Sembunyikan rekap untuk "${name}" dari Laporan Evaluasi?`;
+      
+      if (!confirm(confirmMsg)) return;
+
+      try {
+          await toggleFacilitatorVisibility(training.id, name, !currentHidden);
+          
+          // Update Local State for immediate feedback
+          const updatedTraining = { ...training };
+          updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
+              f.name === name ? { ...f, isHidden: !currentHidden } : f
+          );
+          setTraining(updatedTraining);
+      } catch (error) {
+          alert('Gagal mengubah visibilitas.');
+          console.error(error);
       }
   };
 
@@ -485,9 +520,10 @@ export const ResultsView: React.FC = () => {
             <div className="space-y-6">
                 {flatSessions.map((session, idx) => {
                     const dateStr = session.date ? formatDateID(session.date) : '';
+                    const isHidden = session.isHidden;
                     
                     return (
-                        <div key={`${session.name}-${session.subject}-${idx}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div key={`${session.name}-${session.subject}-${idx}`} className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-opacity ${isHidden ? 'opacity-70 grayscale-[0.5]' : 'opacity-100'}`}>
                              {/* Card Header */}
                              <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
                                 <div className="flex items-center gap-3 w-full">
@@ -512,18 +548,32 @@ export const ResultsView: React.FC = () => {
                                             ) : (
                                                 /* NORMAL DISPLAY MODE */
                                                 <>
-                                                    <h3 className="font-bold text-slate-800 text-base">
+                                                    <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
                                                         {activeTab === 'process' ? 'Hasil Evaluasi Penyelenggaraan' : session.name}
+                                                        {isHidden && (
+                                                            <span className="text-[9px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full border border-red-200 font-bold uppercase tracking-wide">
+                                                                Disembunyikan
+                                                            </span>
+                                                        )}
                                                     </h3>
-                                                    {/* EDIT ICON FOR SUPERADMIN */}
+                                                    {/* SUPERADMIN CONTROLS: EDIT & TOGGLE VISIBILITY */}
                                                     {isSuperAdmin && activeTab === 'facilitator' && (
-                                                        <button 
-                                                            onClick={() => handleStartRename(session.name)} 
-                                                            className="text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors"
-                                                            title="Edit Nama Fasilitator (Superadmin)"
-                                                        >
-                                                            <Edit2 size={14}/>
-                                                        </button>
+                                                        <div className="flex items-center gap-1">
+                                                            <button 
+                                                                onClick={() => handleStartRename(session.name)} 
+                                                                className="text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors"
+                                                                title="Edit Nama Fasilitator"
+                                                            >
+                                                                <Edit2 size={14}/>
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleToggleVisibility(session.name, !!isHidden)} 
+                                                                className={`p-1 rounded transition-colors ${isHidden ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-300 hover:text-indigo-600 hover:bg-indigo-50'}`}
+                                                                title={isHidden ? "Tampilkan Rekap Ini" : "Sembunyikan Rekap Ini (Khusus Superadmin)"}
+                                                            >
+                                                                {isHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </>
                                             )}

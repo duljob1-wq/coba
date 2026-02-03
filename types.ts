@@ -37,6 +37,7 @@ export interface Facilitator {
   whatsapp?: string; 
   isOpen?: boolean; 
   order?: number; 
+  isHidden?: boolean; // New: Control visibility in reports (Superadmin feature)
 }
 
 export interface Training {
