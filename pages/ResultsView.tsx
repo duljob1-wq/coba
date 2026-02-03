@@ -302,7 +302,7 @@ export const ResultsView: React.FC = () => {
               }
           });
           if (sessionCount > 0) {
-              grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2)) : 0;
+              grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2));
               const type: QuestionType = grandAvg > 5 ? 'slider' : 'star';
               grandAvgLabel = getLabel(grandAvg, type);
               grandAvgColor = getLabelColor(grandAvg, type);
