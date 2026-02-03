@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
 import { getTrainingById, saveResponse, saveTraining, getRespondentHistory, saveRespondentHistory, checkParticipantLimitReached } from '../services/storageService';
@@ -174,8 +173,21 @@ export const RespondentView: React.FC = () => {
           
           let label = '';
           if (isTeam) {
-              // TEAM FORMAT: "Materi X (Tim Fasilitator N Orang)"
-              label = `${subject} (Tim Fasilitator ${facilitators.length} Orang)`;
+              // Extract names
+              const names = facilitators.map(f => f.name);
+              let joinedNames = '';
+
+              if (names.length === 2) {
+                  joinedNames = `${names[0]} & ${names[1]}`;
+              } else {
+                  // Ensure proper comma and ampersand placement for > 2 items
+                  const last = names[names.length - 1];
+                  const others = names.slice(0, names.length - 1).join(', ');
+                  joinedNames = `${others} & ${last}`;
+              }
+
+              // TEAM FORMAT: "Materi X (Tim Fasilitator N Orang : Nama & Nama)"
+              label = `${subject} (Tim Fasilitator ${facilitators.length} orang : ${joinedNames})`;
           } else {
               // INDIVIDUAL FORMAT: "Nama - Materi"
               label = `${facilitators[0].name} - ${subject}`;
