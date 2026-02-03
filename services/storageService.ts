@@ -272,27 +272,6 @@ export const renameFacilitator = async (trainingId: string, oldName: string, new
     }
 };
 
-// --- NEW FEATURE: TOGGLE VISIBILITY (SUPERADMIN) ---
-export const toggleFacilitatorVisibility = async (trainingId: string, facilitatorName: string, isHidden: boolean): Promise<void> => {
-    try {
-        const trainingRef = doc(db, 'trainings', trainingId);
-        const trainingSnap = await getDoc(trainingRef);
-        
-        if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
-        
-        const trainingData = trainingSnap.data() as Training;
-        // Update all entries with this name (incase of multiple subjects)
-        const updatedFacilitators = trainingData.facilitators.map(f => 
-            f.name === facilitatorName ? { ...f, isHidden: isHidden } : f
-        );
-        
-        await setDoc(trainingRef, { ...trainingData, facilitators: updatedFacilitators });
-    } catch (error) {
-        console.error("Error toggling visibility:", error);
-        throw error;
-    }
-};
-
 // --- GLOBAL QUESTIONS ---
 
 export const getGlobalQuestions = async (): Promise<GlobalQuestion[]> => {
