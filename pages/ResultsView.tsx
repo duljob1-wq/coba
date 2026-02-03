@@ -259,6 +259,7 @@ export const ResultsView: React.FC = () => {
               const facData = training.facilitators.find(f => f.name === name && f.subject === subject);
               if (facData) {
                   date = facData.sessionDate;
+                  // Explicitly convert to boolean to ensure safety
                   isHidden = !!facData.isHidden;
               }
           }
@@ -267,6 +268,7 @@ export const ResultsView: React.FC = () => {
       });
 
       // FILTER HIDDEN SESSIONS FOR NON-SUPERADMINS
+      // Only Superadmin can see hidden sessions. Everyone else (Admin/Guest) sees strictly filtered list.
       if (!isSuperAdmin) {
           sessions = sessions.filter(s => !s.isHidden);
       }
@@ -294,8 +296,11 @@ export const ResultsView: React.FC = () => {
           let totalSessionAvg = 0;
           let sessionCount = 0;
           flatSessions.forEach(session => {
-              // Exclude hidden sessions from Grand Average calculation even for Superadmin (optional, but cleaner)
-              // Currently if Superadmin sees them, they contribute. Let's keep it consistent: what is visible contributes.
+              // IMPORTANT: Exclude hidden sessions from Grand Average calculation
+              // This ensures the displayed average is consistent with the "Official" visible report,
+              // even if the Superadmin can see the hidden cards.
+              if (session.isHidden) return;
+
               let sessionTotalScore = 0;
               let sessionMetricCount = 0;
               effectiveQuestions.forEach(q => {
