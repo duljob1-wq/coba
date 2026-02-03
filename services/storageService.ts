@@ -1,4 +1,3 @@
-
 import { Training, Response, GlobalQuestion, Contact, AppSettings, TrainingTheme, GuestEntry } from '../types';
 import { db } from './firebaseConfig';
 import { 
@@ -232,6 +231,43 @@ export const deleteFacilitatorResponses = async (trainingId: string, facilitator
         await batch.commit();
     } catch (error) {
         console.error("Error deleting facilitator responses:", error);
+        throw error;
+    }
+};
+
+// --- NEW FEATURE: RENAME FACILITATOR (SUPERADMIN) ---
+export const renameFacilitator = async (trainingId: string, oldName: string, newName: string): Promise<void> => {
+    try {
+        const batch = writeBatch(db);
+
+        // 1. Update Training Document (Facilitator Array)
+        const trainingRef = doc(db, 'trainings', trainingId);
+        const trainingSnap = await getDoc(trainingRef);
+        
+        if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
+        
+        const trainingData = trainingSnap.data() as Training;
+        const updatedFacilitators = trainingData.facilitators.map(f => 
+            f.name === oldName ? { ...f, name: newName } : f
+        );
+        
+        batch.update(trainingRef, { facilitators: updatedFacilitators });
+
+        // 2. Update All Related Responses
+        const q = query(
+            collection(db, 'responses'), 
+            where('trainingId', '==', trainingId),
+            where('targetName', '==', oldName)
+        );
+        const snapshot = await getDocs(q);
+
+        snapshot.docs.forEach((doc) => {
+            batch.update(doc.ref, { targetName: newName });
+        });
+
+        await batch.commit();
+    } catch (error) {
+        console.error("Error renaming facilitator:", error);
         throw error;
     }
 };

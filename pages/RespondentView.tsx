@@ -442,7 +442,10 @@ export const RespondentView: React.FC = () => {
                <div className="space-y-3">
                  <div className="flex gap-2 p-1 bg-slate-100 rounded-lg w-fit">
                     <button type="button" onClick={() => setFacilitatorMode('select')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${facilitatorMode === 'select' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Pilih Nama</button>
-                    <button type="button" onClick={() => setFacilitatorMode('custom')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${facilitatorMode === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Tulis Manual</button>
+                    {/* ONLY SHOW MANUAL INPUT BUTTON IF ALLOWED */}
+                    {training.allowManualInput && (
+                        <button type="button" onClick={() => setFacilitatorMode('custom')} className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${facilitatorMode === 'custom' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}>Tulis Manual</button>
+                    )}
                  </div>
 
                  {facilitatorMode === 'select' ? (

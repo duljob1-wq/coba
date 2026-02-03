@@ -56,6 +56,7 @@ export interface Training {
   learningMethod?: string; // Klasikal, Blended, Daring Learning
   location?: string;       // Malang, Surabaya, Madiun
   participantLimit?: number; // Batas maksimal responden
+  allowManualInput?: boolean; // Izin input manual fasilitator oleh responden
 
   // Automation Features
   targets?: number[]; 

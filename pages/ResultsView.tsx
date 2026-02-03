@@ -1,9 +1,8 @@
-
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining } from '../services/storageService';
+import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining, renameFacilitator } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square, BarChart2 } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square, BarChart2, Edit2, Check } from 'lucide-react';
 
 // --- HELPER FUNCTIONS ---
 const formatDateID = (dateStr: string) => {
@@ -153,8 +152,9 @@ export const ResultsView: React.FC = () => {
   const [responses, setResponses] = useState<Response[]>([]);
   const [activeTab, setActiveTab] = useState<'facilitator' | 'process'>('facilitator');
 
-  // GUEST CHECK
+  // GUEST & ROLE CHECK
   const isGuest = sessionStorage.getItem('isGuest') === 'true';
+  const isSuperAdmin = sessionStorage.getItem('isSuperAdmin') === 'true';
 
   // Delete Session State
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -174,6 +174,11 @@ export const ResultsView: React.FC = () => {
   const [isRestoring, setIsRestoring] = useState(false);
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
   const [restoreConfigs, setRestoreConfigs] = useState<RestoreConfigItem[]>([]);
+
+  // Rename Facilitator State (Superadmin)
+  const [renamingTarget, setRenamingTarget] = useState<string | null>(null); // Name of facilitator being renamed
+  const [renameInput, setRenameInput] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
 
   // --- 2. EFFECT HOOKS ---
   useEffect(() => {
@@ -297,7 +302,7 @@ export const ResultsView: React.FC = () => {
               }
           });
           if (sessionCount > 0) {
-              grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2));
+              grandAvg = Number((totalSessionAvg / sessionCount).toFixed(2)) : 0;
               const type: QuestionType = grandAvg > 5 ? 'slider' : 'star';
               grandAvgLabel = getLabel(grandAvg, type);
               grandAvgColor = getLabelColor(grandAvg, type);
@@ -317,6 +322,51 @@ export const ResultsView: React.FC = () => {
   const handleMoveDown = (index: number) => { if (index === restoreConfigs.length - 1) return; const newConfigs = [...restoreConfigs]; [newConfigs[index], newConfigs[index + 1]] = [newConfigs[index + 1], newConfigs[index]]; setRestoreConfigs(newConfigs); };
   const handleRemoveRestoreConfig = (index: number) => { if(confirm("Hapus variabel ini?")) { const newConfigs = [...restoreConfigs]; newConfigs.splice(index, 1); setRestoreConfigs(newConfigs); } };
   const handleExecuteRestore = async () => { if (!training) return; const missingLabels = restoreConfigs.some(c => !c.label.trim()); if (missingLabels) { alert("Isi nama variabel."); return; } setIsRestoring(true); try { const restoredQuestions: Question[] = restoreConfigs.map(cfg => ({ id: cfg.id, label: cfg.label, type: cfg.type })); const updatedTraining = { ...training }; if (activeTab === 'facilitator') updatedTraining.facilitatorQuestions = [...updatedTraining.facilitatorQuestions, ...restoredQuestions]; else updatedTraining.processQuestions = [...updatedTraining.processQuestions, ...restoredQuestions]; await saveTraining(updatedTraining); setTraining(updatedTraining); setShowRestoredData(false); setIsRestoreModalOpen(false); alert("Berhasil."); } catch (error) { alert("Error."); } finally { setIsRestoring(false); } };
+
+  // --- RENAME HANDLERS (SUPERADMIN) ---
+  const handleStartRename = (name: string) => {
+      setRenamingTarget(name);
+      setRenameInput(name);
+  };
+
+  const handleCancelRename = () => {
+      setRenamingTarget(null);
+      setRenameInput('');
+  };
+
+  const handleSaveRename = async () => {
+      if (!training || !renamingTarget || !renameInput.trim()) return;
+      if (renamingTarget === renameInput.trim()) {
+          handleCancelRename();
+          return;
+      }
+
+      setIsSavingName(true);
+      try {
+          await renameFacilitator(training.id, renamingTarget, renameInput.trim());
+          
+          // Update Local State directly to reflect changes without reload
+          // 1. Update Training
+          const updatedTraining = { ...training };
+          updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
+              f.name === renamingTarget ? { ...f, name: renameInput.trim() } : f
+          );
+          setTraining(updatedTraining);
+
+          // 2. Update Responses
+          const updatedResponses = responses.map(r => 
+              r.targetName === renamingTarget ? { ...r, targetName: renameInput.trim() } : r
+          );
+          setResponses(updatedResponses);
+
+          handleCancelRename();
+      } catch (error) {
+          alert('Gagal mengubah nama. Coba lagi.');
+          console.error(error);
+      } finally {
+          setIsSavingName(false);
+      }
+  };
 
   if (!training) return <div className="p-8 text-center text-slate-500">Memuat Laporan...</div>;
 
@@ -440,14 +490,44 @@ export const ResultsView: React.FC = () => {
                         <div key={`${session.name}-${session.subject}-${idx}`} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                              {/* Card Header */}
                              <div className="bg-slate-50/50 px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-1.5 rounded-lg ${activeTab === 'facilitator' ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
+                                <div className="flex items-center gap-3 w-full">
+                                    <div className={`p-1.5 rounded-lg shrink-0 ${activeTab === 'facilitator' ? 'bg-indigo-100 text-indigo-600' : 'bg-orange-100 text-orange-600'}`}>
                                         {activeTab === 'facilitator' ? <User size={18}/> : <Layout size={18}/>}
                                     </div>
-                                    <div className="flex flex-col">
-                                        <h3 className="font-bold text-slate-800 text-base">
-                                            {activeTab === 'process' ? 'Hasil Evaluasi Penyelenggaraan' : session.name}
-                                        </h3>
+                                    <div className="flex flex-col w-full">
+                                        <div className="flex items-center gap-2">
+                                            {renamingTarget === session.name && activeTab === 'facilitator' ? (
+                                                /* RENAME INPUT MODE */
+                                                <div className="flex items-center gap-2 w-full max-w-md animate-in fade-in">
+                                                    <input 
+                                                        type="text" 
+                                                        value={renameInput} 
+                                                        onChange={e => setRenameInput(e.target.value)} 
+                                                        className="border border-indigo-300 rounded px-2 py-1 text-sm font-bold text-slate-800 w-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                        autoFocus
+                                                    />
+                                                    <button onClick={handleSaveRename} disabled={isSavingName} className="bg-emerald-600 text-white p-1 rounded hover:bg-emerald-700"><Check size={16}/></button>
+                                                    <button onClick={handleCancelRename} className="bg-slate-300 text-slate-700 p-1 rounded hover:bg-slate-400"><X size={16}/></button>
+                                                </div>
+                                            ) : (
+                                                /* NORMAL DISPLAY MODE */
+                                                <>
+                                                    <h3 className="font-bold text-slate-800 text-base">
+                                                        {activeTab === 'process' ? 'Hasil Evaluasi Penyelenggaraan' : session.name}
+                                                    </h3>
+                                                    {/* EDIT ICON FOR SUPERADMIN */}
+                                                    {isSuperAdmin && activeTab === 'facilitator' && (
+                                                        <button 
+                                                            onClick={() => handleStartRename(session.name)} 
+                                                            className="text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 p-1 rounded transition-colors"
+                                                            title="Edit Nama Fasilitator (Superadmin)"
+                                                        >
+                                                            <Edit2 size={14}/>
+                                                        </button>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                         <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                                             {activeTab === 'facilitator' && (<span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">{session.subject}</span>)}
                                             {dateStr && <span className="flex items-center gap-1"><Calendar size={12}/> {dateStr}</span>}

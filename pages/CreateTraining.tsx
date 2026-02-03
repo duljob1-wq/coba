@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { Facilitator, Question, Training, Contact, TrainingTheme } from '../types';
 import { saveTraining, getTrainingById, getGlobalQuestions, getContacts, saveContact, getSettings, getTrainings, getThemes } from '../services/storageService';
 import { QuestionBuilder } from '../components/QuestionBuilder';
-import { ArrowLeft, Save, Plus, X, Calendar, UserPlus, Settings, CheckCircle, Lock, Unlock, MessageSquare, Trash2, FileText, Edit2, Phone, ChevronDown, Check, FolderOpen, Clock, Hash, UserCheck, MapPin, Monitor, User } from 'lucide-react';
+import { ArrowLeft, Save, Plus, X, Calendar, UserPlus, Settings, CheckCircle, Lock, Unlock, MessageSquare, Trash2, FileText, Edit2, Phone, ChevronDown, Check, FolderOpen, Clock, Hash, UserCheck, MapPin, Monitor, User, PenTool } from 'lucide-react';
 
 export const CreateTraining: React.FC = () => {
   const navigate = useNavigate();
@@ -32,6 +32,9 @@ export const CreateTraining: React.FC = () => {
   const [createdAt, setCreatedAt] = useState<number>(Date.now());
   const [currentReportedTargets, setCurrentReportedTargets] = useState<Record<string, boolean>>({});
   
+  // Config State
+  const [allowManualInput, setAllowManualInput] = useState(false); // Default false
+
   // Facilitators
   const [facilitators, setFacilitators] = useState<Facilitator[]>([]);
   
@@ -147,6 +150,7 @@ export const CreateTraining: React.FC = () => {
             setFacilitatorQuestions(data.facilitatorQuestions);
             setProcessQuestions(data.processQuestions);
             setTargets(data.targets || []);
+            setAllowManualInput(data.allowManualInput || false);
             
             if (data.learningMethod) { setUseMethod(true); setLearningMethod(data.learningMethod); }
             if (data.location) { setUseLocation(true); setLocation(data.location); }
@@ -386,7 +390,8 @@ export const CreateTraining: React.FC = () => {
       title, description, startDate, endDate, processEvaluationDate: processDate || endDate, 
       facilitators, facilitatorQuestions, processQuestions, createdAt: createdAt, targets: targets, reportedTargets: currentReportedTargets,
       processOrganizer: pOrganizer, processTargets: processTargets, learningMethod: useMethod ? learningMethod : undefined,
-      location: useLocation ? location : undefined, participantLimit: participantLimit ? parseInt(participantLimit) : undefined
+      location: useLocation ? location : undefined, participantLimit: participantLimit ? parseInt(participantLimit) : undefined,
+      allowManualInput: allowManualInput 
     };
 
     await saveTraining(newTraining);
@@ -554,7 +559,29 @@ export const CreateTraining: React.FC = () => {
                     <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between"><div className="flex items-center gap-3"><div className="bg-amber-100 p-2 rounded-lg text-amber-600"><Settings size={20} /></div><h2 className="font-semibold text-slate-800">Langkah 2B: Pengaturan Evaluasi</h2></div><div className="relative"><button onClick={() => setIsThemeDropdownOpen(!isThemeDropdownOpen)} className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-lg transition border ${selectedThemeName ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-600 border-slate-300 hover:border-indigo-400'}`}><FolderOpen size={14}/> {selectedThemeName ? `Tema: ${selectedThemeName}` : 'Pilih Tema Preset'} <ChevronDown size={12}/></button>{isThemeDropdownOpen && (<><div className="fixed inset-0 z-10 cursor-default" onClick={() => setIsThemeDropdownOpen(false)}></div><div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-xl z-20 animate-in fade-in zoom-in-95 overflow-hidden"><div className="p-2 border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-wider bg-slate-50">Tema Tersedia</div><div className="max-h-64 overflow-y-auto">{availableThemes.length === 0 ? (<div className="p-4 text-xs text-slate-400 italic text-center">Belum ada tema. <br/> Buat di menu Variabel.</div>) : (availableThemes.map(theme => (<button key={theme.id} onClick={() => applyTheme(theme.id)} className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition flex items-center justify-between border-b border-slate-50 last:border-0"><span className="font-medium">{theme.name}</span>{selectedThemeName === theme.name && <Check size={14} className="text-indigo-600"/>}</button>)))}</div><div className="p-2 bg-slate-50 border-t border-slate-100 text-center"><button onClick={() => navigate('/admin/dashboard')} className="text-[10px] text-indigo-600 font-bold hover:underline">Kelola Tema</button></div></div></>)}</div></div>
                     <div className="p-6 space-y-8">
                         <QuestionBuilder title="A. Evaluasi Fasilitator" questions={facilitatorQuestions} onChange={setFacilitatorQuestions} />
-                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mt-4"><h3 className="text-sm font-bold text-indigo-800 flex items-center gap-2 mb-2"><MessageSquare size={16}/> Target Otomatisasi Laporan (WhatsApp)</h3><p className="text-xs text-indigo-600 mb-3">Sistem mengirimkan laporan ke WA fasilitator saat jumlah responden <strong>per materi/sesi</strong> mencapai target.</p><div className="flex gap-2 mb-3"><input type="number" value={newTargetInput} onChange={(e) => setNewTargetInput(e.target.value)} placeholder="Contoh: 10" className="w-24 border border-indigo-200 rounded-lg px-3 py-1.5 text-sm" /><button onClick={addTarget} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm">Tambah Target</button></div><div className="flex flex-wrap gap-2">{targets.length === 0 && <span className="text-xs text-slate-400 italic">Belum ada target.</span>}{targets.map(t => (<div key={t} className="bg-white border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">Target: {t} Orang<button onClick={() => removeTarget(t)} className="hover:text-red-500"><X size={12}/></button></div>))}</div></div>
+                        
+                        <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mt-4 space-y-4">
+                            {/* Manual Input Toggle */}
+                            <div className="flex items-center gap-3 bg-white p-3 rounded-lg border border-indigo-200">
+                                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><PenTool size={16}/></div>
+                                <div className="flex-1">
+                                    <label className="text-sm font-bold text-slate-800 cursor-pointer select-none flex items-center gap-2">
+                                        <input type="checkbox" checked={allowManualInput} onChange={e => setAllowManualInput(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500" />
+                                        Izinkan Input Fasilitator Manual
+                                    </label>
+                                    <p className="text-xs text-slate-500 mt-0.5">Jika aktif, responden dapat mengetik nama fasilitator secara manual jika tidak ada di daftar.</p>
+                                </div>
+                            </div>
+
+                            {/* Automation Targets */}
+                            <div>
+                                <h3 className="text-sm font-bold text-indigo-800 flex items-center gap-2 mb-2"><MessageSquare size={16}/> Target Otomatisasi Laporan (WhatsApp)</h3>
+                                <p className="text-xs text-indigo-600 mb-3">Sistem mengirimkan laporan ke WA fasilitator saat jumlah responden <strong>per materi/sesi</strong> mencapai target.</p>
+                                <div className="flex gap-2 mb-3"><input type="number" value={newTargetInput} onChange={(e) => setNewTargetInput(e.target.value)} placeholder="Contoh: 10" className="w-24 border border-indigo-200 rounded-lg px-3 py-1.5 text-sm" /><button onClick={addTarget} className="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-sm">Tambah Target</button></div>
+                                <div className="flex flex-wrap gap-2">{targets.length === 0 && <span className="text-xs text-slate-400 italic">Belum ada target.</span>}{targets.map(t => (<div key={t} className="bg-white border border-indigo-200 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-2">Target: {t} Orang<button onClick={() => removeTarget(t)} className="hover:text-red-500"><X size={12}/></button></div>))}</div>
+                            </div>
+                        </div>
+
                         <div className="border-t border-slate-100 pt-8">
                             <div className="mb-4 bg-orange-50 p-4 rounded-xl border border-orange-100 grid md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2 flex items-center justify-between"><label className="text-sm font-bold text-orange-800 flex items-center gap-2"><Calendar size={16}/> Tanggal Evaluasi Penyelenggaraan</label><input type="date" value={processDate} onChange={e => setProcessDate(e.target.value)} className="border border-orange-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 outline-none" /></div>
