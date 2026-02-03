@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining, renameFacilitator, toggleFacilitatorVisibility, updateFacilitatorSubject } from '../services/storageService';
+import { getTrainingById, getResponses, deleteFacilitatorResponses, getSettings, saveTraining, renameFacilitator, toggleFacilitatorVisibility, updateFacilitatorSubject, updateFacilitatorsOrder } from '../services/storageService';
 import { Training, Response, QuestionType, Question } from '../types';
-import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square, BarChart2, Edit2, Check } from 'lucide-react';
+import { ArrowLeft, User, Layout, Quote, Calendar, Award, Trash2, Lock, UserCheck, AlertTriangle, RefreshCw, Eye, EyeOff, Save, CheckCircle, Pencil, X, ArrowUp, ArrowDown, Settings2, CheckSquare, Square, BarChart2, Edit2, Check, ListOrdered } from 'lucide-react';
 
 // --- HELPER FUNCTIONS ---
 const formatDateID = (dateStr: string) => {
@@ -186,6 +186,11 @@ export const ResultsView: React.FC = () => {
   const [subjectInput, setSubjectInput] = useState('');
   const [isSavingSubject, setIsSavingSubject] = useState(false);
 
+  // Reorder Facilitator State
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+  const [reorderList, setReorderList] = useState<{key: string, name: string, subject: string}[]>([]);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
   // --- 2. EFFECT HOOKS ---
   useEffect(() => {
     const fetchData = async () => {
@@ -291,15 +296,26 @@ export const ResultsView: React.FC = () => {
 
       sessions.sort((a, b) => {
           if (activeTab === 'process') return 0;
+          
+          // --- CHANGED SORT LOGIC: Priority to Order, then Date ---
+          const facA = training.facilitators.find(f => f.name.trim().toLowerCase() === a.name.trim().toLowerCase() && f.subject.trim().toLowerCase() === a.subject.trim().toLowerCase());
+          const facB = training.facilitators.find(f => f.name.trim().toLowerCase() === b.name.trim().toLowerCase() && f.subject.trim().toLowerCase() === b.subject.trim().toLowerCase());
+          
+          const orderA = facA?.order || 0;
+          const orderB = facB?.order || 0;
+
+          // 1. Primary: Manual Order
+          if (orderA !== orderB) {
+              return orderA - orderB;
+          }
+
+          // 2. Secondary: Date
           if (a.date && b.date) {
               if (a.date < b.date) return -1;
               if (a.date > b.date) return 1;
           }
-          const facA = training.facilitators.find(f => f.name === a.name && f.subject === a.subject);
-          const facB = training.facilitators.find(f => f.name === b.name && f.subject === b.subject);
-          const orderA = facA?.order || 0;
-          const orderB = facB?.order || 0;
-          return orderA - orderB;
+          
+          return 0;
       });
       return sessions;
   }, [training, filteredResponses, activeTab, effectiveQuestions, isSuperAdmin]);
@@ -464,6 +480,70 @@ export const ResultsView: React.FC = () => {
       }
   };
 
+  // --- REORDER HANDLERS ---
+  const openReorderModal = () => {
+      if (!training) return;
+      
+      // Group by Name+Subject to get unique list, but we need to track original data structure
+      // Use existing 'flatSessions' logic partially to get the current order
+      
+      const list = flatSessions.map(s => ({
+          key: `${s.name}|${s.subject}`,
+          name: s.name,
+          subject: s.subject
+      }));
+      
+      setReorderList(list);
+      setIsReorderModalOpen(true);
+  };
+
+  const handleMoveFacilitator = (index: number, direction: -1 | 1) => {
+      const newList = [...reorderList];
+      
+      // Boundary Check
+      if (direction === -1 && index === 0) return;
+      if (direction === 1 && index === newList.length - 1) return;
+
+      const targetIndex = index + direction;
+      [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
+      
+      setReorderList(newList);
+  };
+
+  const saveFacilitatorOrder = async () => {
+      if (!training) return;
+      setIsSavingOrder(true);
+      try {
+          const updatedFacilitators = [...training.facilitators];
+          
+          // Loop through reordered list and update order in original array
+          reorderList.forEach((item, index) => {
+              // 1-based order for human readability, though array is 0-based
+              const newOrder = index + 1;
+              
+              // Find all facilitators matching this Name+Subject group (to handle merged data)
+              // We must update ALL matching entries so they stay together
+              updatedFacilitators.forEach(f => {
+                  if (f.name.trim().toLowerCase() === item.name.trim().toLowerCase() && 
+                      f.subject.trim().toLowerCase() === item.subject.trim().toLowerCase()) {
+                      f.order = newOrder;
+                  }
+              });
+          });
+
+          await updateFacilitatorsOrder(training.id, updatedFacilitators);
+          
+          // Update Local State
+          setTraining({...training, facilitators: updatedFacilitators});
+          setIsReorderModalOpen(false);
+      } catch (error) {
+          alert("Gagal menyimpan urutan.");
+          console.error(error);
+      } finally {
+          setIsSavingOrder(false);
+      }
+  };
+
   if (!training) return <div className="p-8 text-center text-slate-500">Memuat Laporan...</div>;
 
   return (
@@ -494,15 +574,26 @@ export const ResultsView: React.FC = () => {
             </div>
             
             <div className="flex items-center gap-3 self-start md:self-center">
-                 {/* HIDE MANAGE VARIABLES FOR GUEST */}
+                 {/* ADMIN TOOLS */}
                  {!isGuest && (
-                     <button
-                        onClick={() => { setIsManageMode(!isManageMode); setSelectedVarIds(new Set()); }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${isManageMode ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >
-                        <Settings2 size={16}/>
-                        {isManageMode ? 'Batal Kelola' : 'Kelola Variabel'}
-                    </button>
+                     <div className="flex items-center gap-2">
+                        {activeTab === 'facilitator' && (
+                            <button
+                                onClick={openReorderModal}
+                                className="px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+                            >
+                                <ListOrdered size={16}/>
+                                Atur Posisi
+                            </button>
+                        )}
+                        <button
+                            onClick={() => { setIsManageMode(!isManageMode); setSelectedVarIds(new Set()); }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 border ${isManageMode ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                        >
+                            <Settings2 size={16}/>
+                            {isManageMode ? 'Batal Kelola' : 'Kelola Variabel'}
+                        </button>
+                     </div>
                  )}
                 
                 <div className="bg-slate-100 p-1 rounded-lg flex gap-1">
@@ -799,6 +890,67 @@ export const ResultsView: React.FC = () => {
         {isVarDeleteModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95"><div className="p-6"><div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4"><Trash2 className="text-red-600" size={24}/></div><h3 className="text-center font-bold text-slate-800 text-lg mb-2">Hapus {selectedVarIds.size} Variabel?</h3><p className="text-center text-slate-500 text-sm mb-6">Variabel yang dihapus akan hilang dari laporan ini, namun data penilaian tersimpan dapat dipulihkan nanti melalui menu pemulihan.</p><div className="space-y-3"><div><label className="block text-xs font-bold text-slate-700 uppercase mb-1">Kode Otorisasi (Sandi)</label><div className="relative"><Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="password" value={varDeletePassword} onChange={(e) => setVarDeletePassword(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="Masukkan sandi..." autoFocus /></div></div><div className="flex gap-2 pt-2"><button onClick={() => { setIsVarDeleteModalOpen(false); setVarDeletePassword(''); }} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 transition">Batal</button><button onClick={handleDeleteVariablesConfirm} disabled={isDeleting || !varDeletePassword} className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2">{isDeleting ? 'Menghapus...' : 'Hapus'}</button></div></div></div></div></div>)}
         {isRestoreModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]"><div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center"><div className="flex items-center gap-3"><div className="bg-emerald-100 p-2 rounded-full text-emerald-600"><RefreshCw size={20}/></div><div><h3 className="font-bold text-slate-800">Pulihkan Variabel Penilaian</h3><p className="text-xs text-slate-500">Beri nama label yang sesuai dengan data asli sebelum dihapus.</p></div></div><button onClick={() => setIsRestoreModalOpen(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button></div><div className="p-6 overflow-y-auto flex-1"><div className="space-y-4"><div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex gap-3 text-xs text-amber-800"><AlertTriangle size={16} className="shrink-0 mt-0.5"/><p>Sistem tidak dapat mengembalikan nama variabel secara otomatis. Mohon ketik nama yang sesuai agar data tersaji dengan benar.</p></div><table className="w-full text-left text-sm"><thead className="bg-slate-100 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase"><tr><th className="px-3 py-2 w-16 text-center">Posisi</th><th className="px-3 py-2">ID Data</th><th className="px-3 py-2 w-32">Tipe</th><th className="px-3 py-2">Nama Asli Variabel (Wajib Diisi)</th><th className="px-3 py-2 w-10"></th></tr></thead><tbody className="divide-y divide-slate-100">{restoreConfigs.map((cfg, idx) => (<tr key={cfg.id} className="hover:bg-slate-50"><td className="px-3 py-3"><div className="flex items-center justify-center gap-1"><button onClick={() => handleMoveUp(idx)} disabled={idx === 0} className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowUp size={14} /></button><button onClick={() => handleMoveDown(idx)} disabled={idx === restoreConfigs.length - 1} className="p-1 rounded hover:bg-slate-200 text-slate-500 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowDown size={14} /></button></div></td><td className="px-3 py-3 font-mono text-[10px] text-slate-400 select-all" title={cfg.id}>{cfg.id.substring(0,8)}...</td><td className="px-3 py-3"><select value={cfg.type} onChange={(e) => handleUpdateRestoreConfig(idx, 'type', e.target.value)} className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-500"><option value="star">★ Bintang</option><option value="slider">⸺ Skala</option><option value="text">¶ Teks</option></select>{cfg.type !== cfg.originalInferredType && (<div className="text-[10px] text-amber-600 mt-1">Terdeteksi: {cfg.originalInferredType}</div>)}</td><td className="px-3 py-3"><input type="text" value={cfg.label} onChange={(e) => handleUpdateRestoreConfig(idx, 'label', e.target.value)} className={`w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 ${!cfg.label ? 'border-red-300 ring-red-100 focus:ring-red-200' : 'border-slate-300 focus:ring-indigo-200'}`} placeholder="Ketik Pertanyaan/Variabel..." autoFocus={idx === 0} /></td><td className="px-3 py-3"><button onClick={() => handleRemoveRestoreConfig(idx)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" title="Hapus dari daftar pemulihan (Data tidak akan ditampilkan)"><Trash2 size={16} /></button></td></tr>))}</tbody></table></div></div><div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3"><button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-bold text-sm">Batal</button><button onClick={handleExecuteRestore} disabled={isRestoring} className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50">{isRestoring ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>} Pulihkan & Simpan Permanen</button></div></div></div>)}
         {isDeleteModalOpen && (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95"><div className="p-6"><div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4"><Trash2 className="text-red-600" size={24}/></div><h3 className="text-center font-bold text-slate-800 text-lg mb-2">Hapus Hasil Penilaian?</h3><p className="text-center text-slate-500 text-sm mb-6">Anda akan menghapus seluruh data penilaian untuk fasilitator <strong>{targetToDelete}</strong> dalam pelatihan ini. Tindakan ini tidak dapat dibatalkan.</p><div className="space-y-3"><div><label className="block text-xs font-bold text-slate-700 uppercase mb-1">Kode Otorisasi (Sandi)</label><div className="relative"><Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/><input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="Masukkan sandi..." autoFocus /></div></div><div className="flex gap-2 pt-2"><button onClick={() => { setIsDeleteModalOpen(false); setTargetToDelete(null); }} className="flex-1 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 transition">Batal</button><button onClick={handleDeleteConfirm} disabled={isDeleting || !deletePassword} className="flex-1 py-2.5 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2">{isDeleting ? 'Menghapus...' : 'Hapus Data'}</button></div></div></div></div></div>)}
+
+        {/* --- REORDER FACILITATOR MODAL --- */}
+        {isReorderModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in zoom-in-95">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh]">
+                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-indigo-100 p-2 rounded-full text-indigo-600"><ListOrdered size={20}/></div>
+                            <div>
+                                <h3 className="font-bold text-slate-800">Atur Posisi Fasilitator</h3>
+                                <p className="text-xs text-slate-500">Urutkan tampilan daftar pada laporan.</p>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsReorderModalOpen(false)} className="p-1 hover:bg-slate-200 rounded-full text-slate-400"><X size={20}/></button>
+                    </div>
+                    
+                    <div className="p-6 overflow-y-auto flex-1 bg-slate-50/50">
+                        <div className="space-y-2">
+                            {reorderList.length === 0 ? (
+                                <p className="text-center text-slate-400 text-sm italic py-4">Tidak ada data fasilitator.</p>
+                            ) : (
+                                reorderList.map((item, idx) => (
+                                    <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between group hover:border-indigo-300 transition-colors">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">{idx + 1}</div>
+                                            <div className="min-w-0">
+                                                <div className="font-bold text-sm text-slate-800 truncate">{item.name}</div>
+                                                <div className="text-xs text-slate-500 truncate">{item.subject}</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button 
+                                                onClick={() => handleMoveFacilitator(idx, -1)} 
+                                                disabled={idx === 0} 
+                                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                                            >
+                                                <ArrowUp size={18}/>
+                                            </button>
+                                            <button 
+                                                onClick={() => handleMoveFacilitator(idx, 1)} 
+                                                disabled={idx === reorderList.length - 1} 
+                                                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-indigo-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                                            >
+                                                <ArrowDown size={18}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-100 bg-white flex justify-end gap-3">
+                        <button onClick={() => setIsReorderModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-bold text-sm">Batal</button>
+                        <button onClick={saveFacilitatorOrder} disabled={isSavingOrder} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-70">
+                            {isSavingOrder ? <RefreshCw size={16} className="animate-spin"/> : <Save size={16}/>} Simpan Urutan
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
       </div>
     </div>

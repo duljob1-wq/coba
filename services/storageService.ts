@@ -1,4 +1,4 @@
-import { Training, Response, GlobalQuestion, Contact, AppSettings, TrainingTheme, GuestEntry } from '../types';
+import { Training, Response, GlobalQuestion, Contact, AppSettings, TrainingTheme, GuestEntry, Facilitator } from '../types';
 import { db } from './firebaseConfig';
 import { 
   collection, 
@@ -336,6 +336,18 @@ export const updateFacilitatorSubject = async (
         await batch.commit();
     } catch (error) {
         console.error("Error updating subject:", error);
+        throw error;
+    }
+};
+
+// --- NEW FEATURE: UPDATE FACILITATOR ORDER (MANUAL SORTING) ---
+export const updateFacilitatorsOrder = async (trainingId: string, facilitators: Facilitator[]): Promise<void> => {
+    try {
+        const trainingRef = doc(db, 'trainings', trainingId);
+        // Only updating the facilitators field
+        await setDoc(trainingRef, { facilitators: facilitators }, { merge: true });
+    } catch (error) {
+        console.error("Error updating facilitator order:", error);
         throw error;
     }
 };
