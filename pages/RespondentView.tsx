@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { getTrainingById, saveResponse, getRespondentHistory, saveRespondentHistory, checkParticipantLimitReached } from '../services/storageService';
+import { getTrainingById, saveResponse, saveTraining, getRespondentHistory, saveRespondentHistory, checkParticipantLimitReached } from '../services/storageService';
 import { checkAndSendAutoReport } from '../services/whatsappService';
 import { Training, Response, Facilitator } from '../types';
 import { StarRating } from '../components/StarRating';
@@ -51,32 +51,27 @@ export const RespondentView: React.FC = () => {
     const loadTraining = async () => {
       if (!trainingId) return;
 
-      // 1. Try to fetch fresh data from Database (Source of Truth)
-      let dbData: Training | undefined = await getTrainingById(trainingId);
+      // 1. Try to find in local storage
+      let data: Training | undefined = await getTrainingById(trainingId);
 
-      // 2. Check for data in URL (Snapshot for portability/fallback)
+      // 2. Data extraction from URL for portability (Direct Access)
       const params = new URLSearchParams(location.search);
       const dataStr = params.get('data');
-      let urlData: Training | undefined = undefined;
-
       if (dataStr) {
         try {
           const decodedJson = decodeURIComponent(escape(atob(dataStr)));
           const decodedTraining = JSON.parse(decodedJson);
           if (decodedTraining.id === trainingId) {
-            urlData = decodedTraining as Training;
+            data = decodedTraining as Training;
+            // Crucial: Save to respondent's local storage so they don't need a code next time
+            await saveTraining(data);
           }
         } catch (e) {
           console.error("Failed to parse training data from token", e);
         }
       }
 
-      // PRIORITY: DB Data > URL Data
-      // URL data is only used if DB data is null (e.g. invalid ID or network error treated as empty)
-      // We DO NOT save URL data back to DB here to prevent overwriting fresh config with stale URL snapshots.
-      const finalData = dbData || urlData;
-
-      setTraining(finalData);
+      setTraining(data);
       
       // Load History
       if (trainingId) {
