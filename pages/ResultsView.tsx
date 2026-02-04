@@ -248,23 +248,33 @@ export const ResultsView: React.FC = () => {
       const groupedSessions: Record<string, Response[]> = {};
       
       if (activeTab === 'process') {
-          groupedSessions['Penyelenggaraan|Umum'] = filteredResponses;
+          groupedSessions['penyelenggaraan|umum'] = filteredResponses;
       } else {
           filteredResponses.forEach(r => {
-              // NORMALIZE STRINGS: Trim whitespace to merge "Name " and "Name"
-              // This fixes the duplicate card issue if data is identical but has trailing spaces
+              // NORMALIZE STRINGS: Trim whitespace AND lowercase to merge duplicates strictly
+              // This fixes "Name " vs "Name" AND "Name" vs "name" issues
               const name = (r.targetName || 'Umum').trim();
               const subject = (r.targetSubject || 'Umum').trim();
               
-              const key = `${name}|${subject}`;
+              // Use lowercase key for robust grouping
+              const key = `${name.toLowerCase()}|${subject.toLowerCase()}`;
               if (!groupedSessions[key]) groupedSessions[key] = [];
               groupedSessions[key].push(r);
           });
       }
 
       let sessions = Object.keys(groupedSessions).map(key => {
-          const [name, subject] = key.split('|');
           const items = groupedSessions[key];
+          
+          // Fallback display names from the first response item
+          let name = (items[0].targetName || 'Umum').trim();
+          let subject = (items[0].targetSubject || 'Umum').trim();
+          
+          if (activeTab === 'process') {
+              name = 'Evaluasi Penyelenggaraan';
+              subject = 'Umum';
+          }
+
           let date = '';
           let isHidden = false;
 
@@ -277,10 +287,12 @@ export const ResultsView: React.FC = () => {
               );
 
               // 2. Prioritize the entry that has a sessionDate set
-              // This merges data with the correct date even if duplicates exist in config
               const bestMatch = matchingFacs.find(f => f.sessionDate) || matchingFacs[0];
 
               if (bestMatch) {
+                  // Use the Canonical Name from metadata (e.g. use "Dr. Sri" instead of "dr. sri")
+                  name = bestMatch.name;
+                  subject = bestMatch.subject;
                   date = bestMatch.sessionDate;
                   isHidden = !!bestMatch.isHidden;
               }
@@ -289,36 +301,32 @@ export const ResultsView: React.FC = () => {
           return { name, subject, date, items, overall, isHidden };
       });
 
-      // FILTER HIDDEN SESSIONS FOR NON-SUPERADMINS
-      if (!isSuperAdmin) {
+      // FILTER HIDDEN SESSIONS
+      // Admins (Regular & Super) see hidden items as dimmed (to allow toggling back)
+      // Guests do NOT see hidden items
+      if (isGuest) {
           sessions = sessions.filter(s => !s.isHidden);
       }
 
       sessions.sort((a, b) => {
           if (activeTab === 'process') return 0;
           
-          // --- CHANGED SORT LOGIC: Priority to Order, then Date ---
+          // Sort Logic: Order -> Date
           const facA = training.facilitators.find(f => f.name.trim().toLowerCase() === a.name.trim().toLowerCase() && f.subject.trim().toLowerCase() === a.subject.trim().toLowerCase());
           const facB = training.facilitators.find(f => f.name.trim().toLowerCase() === b.name.trim().toLowerCase() && f.subject.trim().toLowerCase() === b.subject.trim().toLowerCase());
           
           const orderA = facA?.order || 0;
           const orderB = facB?.order || 0;
 
-          // 1. Primary: Manual Order
-          if (orderA !== orderB) {
-              return orderA - orderB;
-          }
-
-          // 2. Secondary: Date
+          if (orderA !== orderB) return orderA - orderB;
           if (a.date && b.date) {
               if (a.date < b.date) return -1;
               if (a.date > b.date) return 1;
           }
-          
           return 0;
       });
       return sessions;
-  }, [training, filteredResponses, activeTab, effectiveQuestions, isSuperAdmin]);
+  }, [training, filteredResponses, activeTab, effectiveQuestions, isSuperAdmin, isGuest]);
 
   const grandStats = useMemo(() => {
       let grandAvg = 0;
@@ -360,7 +368,30 @@ export const ResultsView: React.FC = () => {
 
   // --- 4. HANDLERS ---
   const handleInitiateDelete = (name: string) => { setTargetToDelete(name); setDeletePassword(''); setIsDeleteModalOpen(true); };
-  const handleDeleteConfirm = async () => { if (deletePassword !== sysDeletePass) { alert("Kata sandi salah!"); return; } if (trainingId && targetToDelete) { setIsDeleting(true); try { await deleteFacilitatorResponses(trainingId, targetToDelete); const updatedResponses = responses.filter(r => !(r.type === 'facilitator' && r.targetName === targetToDelete)); setResponses(updatedResponses); setIsDeleteModalOpen(false); setTargetToDelete(null); } catch (error) { alert("Gagal menghapus data."); } finally { setIsDeleting(false); } } };
+  
+  // UPDATED: handleDeleteConfirm with Case-Insensitive logic for local state
+  const handleDeleteConfirm = async () => { 
+      if (deletePassword !== sysDeletePass) { alert("Kata sandi salah!"); return; } 
+      if (trainingId && targetToDelete) { 
+          setIsDeleting(true); 
+          try { 
+              await deleteFacilitatorResponses(trainingId, targetToDelete); 
+              
+              const targetLower = targetToDelete.trim().toLowerCase();
+              const updatedResponses = responses.filter(r => 
+                  !(r.type === 'facilitator' && r.targetName?.trim().toLowerCase() === targetLower)
+              ); 
+              setResponses(updatedResponses); 
+              setIsDeleteModalOpen(false); 
+              setTargetToDelete(null); 
+          } catch (error) { 
+              alert("Gagal menghapus data."); 
+          } finally { 
+              setIsDeleting(false); 
+          } 
+      } 
+  };
+
   const handleToggleSelectVariable = (id: string) => { const newSet = new Set(selectedVarIds); if (newSet.has(id)) newSet.delete(id); else newSet.add(id); setSelectedVarIds(newSet); };
   const handleDeleteVariablesConfirm = async () => { if (varDeletePassword !== sysDeletePass) { alert("Kata sandi salah!"); return; } if (!training) return; setIsDeleting(true); try { const updatedTraining = { ...training }; if (activeTab === 'facilitator') { updatedTraining.facilitatorQuestions = updatedTraining.facilitatorQuestions.filter(q => !selectedVarIds.has(q.id)); } else { updatedTraining.processQuestions = updatedTraining.processQuestions.filter(q => !selectedVarIds.has(q.id)); } await saveTraining(updatedTraining); setTraining(updatedTraining); setIsVarDeleteModalOpen(false); setIsManageMode(false); setSelectedVarIds(new Set()); setVarDeletePassword(''); } catch (error) { console.error("Failed to delete variables", error); alert("Gagal menghapus variabel."); } finally { setIsDeleting(false); } };
   const handleInitiateRestore = () => { if (!training || orphanedQuestionIds.length === 0) return; const configs: RestoreConfigItem[] = orphanedQuestionIds.map(id => { let inferredType: QuestionType = 'star'; const sample = filteredResponses.find(r => r.answers[id] !== undefined); if (sample) { const val = sample.answers[id]; if (typeof val === 'string') inferredType = 'text'; else if (typeof val === 'number') inferredType = val > 5 ? 'slider' : 'star'; } return { id, label: '', type: inferredType, originalInferredType: inferredType }; }); setRestoreConfigs(configs); setIsRestoreModalOpen(true); };
@@ -381,6 +412,7 @@ export const ResultsView: React.FC = () => {
       setRenameInput('');
   };
 
+  // UPDATED: handleSaveRename with Case-Insensitive logic for local state
   const handleSaveRename = async () => {
       if (!training || !renamingTarget || !renameInput.trim()) return;
       if (renamingTarget === renameInput.trim()) {
@@ -392,15 +424,16 @@ export const ResultsView: React.FC = () => {
       try {
           await renameFacilitator(training.id, renamingTarget, renameInput.trim());
           
-          // Update Local State
+          // Update Local State (Case Insensitive)
+          const targetLower = renamingTarget.trim().toLowerCase();
           const updatedTraining = { ...training };
           updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
-              f.name === renamingTarget ? { ...f, name: renameInput.trim() } : f
+              f.name.trim().toLowerCase() === targetLower ? { ...f, name: renameInput.trim() } : f
           );
           setTraining(updatedTraining);
 
           const updatedResponses = responses.map(r => 
-              r.targetName === renamingTarget ? { ...r, targetName: renameInput.trim() } : r
+              r.targetName?.trim().toLowerCase() === targetLower ? { ...r, targetName: renameInput.trim() } : r
           );
           setResponses(updatedResponses);
 
@@ -424,6 +457,7 @@ export const ResultsView: React.FC = () => {
       setSubjectInput('');
   };
 
+  // UPDATED: handleSaveSubjectRename with Case-Insensitive logic
   const handleSaveSubjectRename = async (name: string, oldSubject: string) => {
       if (!training || !subjectInput.trim()) return;
       if (subjectInput.trim() === oldSubject) {
@@ -435,15 +469,18 @@ export const ResultsView: React.FC = () => {
       try {
           await updateFacilitatorSubject(training.id, name, oldSubject, subjectInput.trim());
 
-          // Update Local State
+          // Update Local State (Case Insensitive)
+          const nameLower = name.trim().toLowerCase();
+          const subjectLower = oldSubject.trim().toLowerCase();
+
           const updatedTraining = { ...training };
           updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
-              (f.name === name && f.subject === oldSubject) ? { ...f, subject: subjectInput.trim() } : f
+              (f.name.trim().toLowerCase() === nameLower && f.subject.trim().toLowerCase() === subjectLower) ? { ...f, subject: subjectInput.trim() } : f
           );
           setTraining(updatedTraining);
 
           const updatedResponses = responses.map(r => 
-              (r.targetName === name && r.targetSubject === oldSubject) ? { ...r, targetSubject: subjectInput.trim() } : r
+              (r.targetName?.trim().toLowerCase() === nameLower && r.targetSubject?.trim().toLowerCase() === subjectLower) ? { ...r, targetSubject: subjectInput.trim() } : r
           );
           setResponses(updatedResponses);
 
@@ -457,6 +494,7 @@ export const ResultsView: React.FC = () => {
   };
 
   // --- TOGGLE VISIBILITY HANDLER (SUPERADMIN) ---
+  // UPDATED: handleToggleVisibility with Case-Insensitive logic
   const handleToggleVisibility = async (name: string, currentHidden: boolean) => {
       if (!training) return;
       const confirmMsg = currentHidden 
@@ -468,10 +506,11 @@ export const ResultsView: React.FC = () => {
       try {
           await toggleFacilitatorVisibility(training.id, name, !currentHidden);
           
-          // Update Local State for immediate feedback
+          // Update Local State (Case Insensitive)
+          const targetLower = name.trim().toLowerCase();
           const updatedTraining = { ...training };
           updatedTraining.facilitators = updatedTraining.facilitators.map(f => 
-              f.name === name ? { ...f, isHidden: !currentHidden } : f
+              f.name.trim().toLowerCase() === targetLower ? { ...f, isHidden: !currentHidden } : f
           );
           setTraining(updatedTraining);
       } catch (error) {
@@ -710,7 +749,7 @@ export const ResultsView: React.FC = () => {
                                                             </span>
                                                         )}
                                                     </h3>
-                                                    {/* SUPERADMIN CONTROLS: EDIT & TOGGLE VISIBILITY */}
+                                                    {/* SUPERADMIN ONLY CONTROLS: EDIT & TOGGLE VISIBILITY */}
                                                     {isSuperAdmin && activeTab === 'facilitator' && (
                                                         <div className="flex items-center gap-1">
                                                             <button 
@@ -723,7 +762,7 @@ export const ResultsView: React.FC = () => {
                                                             <button 
                                                                 onClick={() => handleToggleVisibility(session.name, !!isHidden)} 
                                                                 className={`p-1 rounded transition-colors ${isHidden ? 'text-red-400 hover:text-red-600 hover:bg-red-50' : 'text-slate-300 hover:text-indigo-600 hover:bg-indigo-50'}`}
-                                                                title={isHidden ? "Tampilkan Rekap Ini" : "Sembunyikan Rekap Ini (Khusus Superadmin)"}
+                                                                title={isHidden ? "Tampilkan Rekap Ini" : "Sembunyikan Rekap Ini"}
                                                             >
                                                                 {isHidden ? <EyeOff size={14}/> : <Eye size={14}/>}
                                                             </button>

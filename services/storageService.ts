@@ -208,13 +208,13 @@ export const checkParticipantLimitReached = async (
     }
 };
 
+// UPDATED: Case-insensitive delete
 export const deleteFacilitatorResponses = async (trainingId: string, facilitatorName: string): Promise<void> => {
     try {
-        // Find all responses for this facilitator in this training
+        // Query all facilitator responses for this training
         const q = query(
             collection(db, 'responses'), 
             where('trainingId', '==', trainingId),
-            where('targetName', '==', facilitatorName),
             where('type', '==', 'facilitator')
         );
         
@@ -222,23 +222,33 @@ export const deleteFacilitatorResponses = async (trainingId: string, facilitator
         
         if (snapshot.empty) return;
 
-        // Perform batch delete
+        const targetLower = facilitatorName.trim().toLowerCase();
         const batch = writeBatch(db);
+        let count = 0;
+
         snapshot.docs.forEach((doc) => {
-            batch.delete(doc.ref);
+            const data = doc.data() as Response;
+            // Case-insensitive check
+            if (data.targetName && data.targetName.trim().toLowerCase() === targetLower) {
+                batch.delete(doc.ref);
+                count++;
+            }
         });
 
-        await batch.commit();
+        if (count > 0) {
+            await batch.commit();
+        }
     } catch (error) {
         console.error("Error deleting facilitator responses:", error);
         throw error;
     }
 };
 
-// --- NEW FEATURE: RENAME FACILITATOR (SUPERADMIN) ---
+// --- NEW FEATURE: RENAME FACILITATOR (SUPERADMIN) - Case Insensitive ---
 export const renameFacilitator = async (trainingId: string, oldName: string, newName: string): Promise<void> => {
     try {
         const batch = writeBatch(db);
+        const oldNameLower = oldName.trim().toLowerCase();
 
         // 1. Update Training Document (Facilitator Array)
         const trainingRef = doc(db, 'trainings', trainingId);
@@ -247,22 +257,27 @@ export const renameFacilitator = async (trainingId: string, oldName: string, new
         if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
         
         const trainingData = trainingSnap.data() as Training;
+        
+        // Find ALL entries matching the name (case insensitive)
         const updatedFacilitators = trainingData.facilitators.map(f => 
-            f.name === oldName ? { ...f, name: newName } : f
+            f.name.trim().toLowerCase() === oldNameLower ? { ...f, name: newName } : f
         );
         
         batch.update(trainingRef, { facilitators: updatedFacilitators });
 
-        // 2. Update All Related Responses
+        // 2. Update All Related Responses (Fetch all then filter locally)
         const q = query(
             collection(db, 'responses'), 
             where('trainingId', '==', trainingId),
-            where('targetName', '==', oldName)
+            where('type', '==', 'facilitator')
         );
         const snapshot = await getDocs(q);
 
         snapshot.docs.forEach((doc) => {
-            batch.update(doc.ref, { targetName: newName });
+            const data = doc.data() as Response;
+            if (data.targetName && data.targetName.trim().toLowerCase() === oldNameLower) {
+                batch.update(doc.ref, { targetName: newName });
+            }
         });
 
         await batch.commit();
@@ -272,7 +287,7 @@ export const renameFacilitator = async (trainingId: string, oldName: string, new
     }
 };
 
-// --- NEW FEATURE: TOGGLE VISIBILITY (SUPERADMIN) ---
+// --- NEW FEATURE: TOGGLE VISIBILITY (SUPERADMIN) - Case Insensitive ---
 export const toggleFacilitatorVisibility = async (trainingId: string, facilitatorName: string, isHidden: boolean): Promise<void> => {
     try {
         const trainingRef = doc(db, 'trainings', trainingId);
@@ -281,9 +296,11 @@ export const toggleFacilitatorVisibility = async (trainingId: string, facilitato
         if (!trainingSnap.exists()) throw new Error("Pelatihan tidak ditemukan");
         
         const trainingData = trainingSnap.data() as Training;
+        const targetLower = facilitatorName.trim().toLowerCase();
+
         // Update all entries with this name (incase of multiple subjects)
         const updatedFacilitators = trainingData.facilitators.map(f => 
-            f.name === facilitatorName ? { ...f, isHidden: isHidden } : f
+            f.name.trim().toLowerCase() === targetLower ? { ...f, isHidden: isHidden } : f
         );
         
         await setDoc(trainingRef, { ...trainingData, facilitators: updatedFacilitators });
@@ -293,7 +310,7 @@ export const toggleFacilitatorVisibility = async (trainingId: string, facilitato
     }
 };
 
-// --- NEW FEATURE: UPDATE SUBJECT / MATERI (SUPERADMIN) ---
+// --- NEW FEATURE: UPDATE SUBJECT / MATERI (SUPERADMIN) - Case Insensitive ---
 export const updateFacilitatorSubject = async (
     trainingId: string, 
     facilitatorName: string, 
@@ -303,6 +320,8 @@ export const updateFacilitatorSubject = async (
     try {
         if (oldSubject === newSubject) return;
         const batch = writeBatch(db);
+        const nameLower = facilitatorName.trim().toLowerCase();
+        const subjectLower = oldSubject.trim().toLowerCase();
 
         // 1. Update Training Document
         const trainingRef = doc(db, 'trainings', trainingId);
@@ -313,7 +332,7 @@ export const updateFacilitatorSubject = async (
         
         // Find the specific entry by Name AND Subject
         const updatedFacilitators = trainingData.facilitators.map(f => 
-            (f.name === facilitatorName && f.subject === oldSubject) 
+            (f.name.trim().toLowerCase() === nameLower && f.subject.trim().toLowerCase() === subjectLower) 
                 ? { ...f, subject: newSubject } 
                 : f
         );
@@ -324,13 +343,18 @@ export const updateFacilitatorSubject = async (
         const q = query(
             collection(db, 'responses'), 
             where('trainingId', '==', trainingId),
-            where('targetName', '==', facilitatorName),
-            where('targetSubject', '==', oldSubject)
+            where('type', '==', 'facilitator')
         );
         const snapshot = await getDocs(q);
 
         snapshot.docs.forEach((doc) => {
-            batch.update(doc.ref, { targetSubject: newSubject });
+            const data = doc.data() as Response;
+            if (
+                data.targetName && data.targetName.trim().toLowerCase() === nameLower &&
+                data.targetSubject && data.targetSubject.trim().toLowerCase() === subjectLower
+            ) {
+                batch.update(doc.ref, { targetSubject: newSubject });
+            }
         });
 
         await batch.commit();
@@ -366,20 +390,27 @@ export const updateResponseMetadata = async (
         const q = query(
             collection(db, 'responses'),
             where('trainingId', '==', trainingId),
-            where('type', '==', 'facilitator'),
-            where('targetName', '==', oldName),
-            where('targetSubject', '==', oldSubject)
+            where('type', '==', 'facilitator')
         );
 
         const snapshot = await getDocs(q);
         if (snapshot.empty) return;
 
         const batch = writeBatch(db);
+        const oldNameLower = oldName.trim().toLowerCase();
+        const oldSubjectLower = oldSubject.trim().toLowerCase();
+
         snapshot.docs.forEach((doc) => {
-            batch.update(doc.ref, { 
-                targetName: newName,
-                targetSubject: newSubject
-            });
+            const data = doc.data() as Response;
+            if (
+                data.targetName && data.targetName.trim().toLowerCase() === oldNameLower &&
+                data.targetSubject && data.targetSubject.trim().toLowerCase() === oldSubjectLower
+            ) {
+                batch.update(doc.ref, { 
+                    targetName: newName,
+                    targetSubject: newSubject
+                });
+            }
         });
 
         await batch.commit();
