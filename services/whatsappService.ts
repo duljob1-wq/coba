@@ -1,4 +1,3 @@
-
 import { getTrainingById, getResponses, getSettings, saveTraining } from './storageService';
 
 // Helper untuk format tanggal Indonesia
@@ -96,8 +95,14 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 allComments = [...allComments, ...answers];
             });
 
-            // Sort by length (shortest first) and take top 2
-            const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
+            // FILTER & SORT LOGIC:
+            // 1. Remove duplicates (Set)
+            // 2. Filter length >= 2 characters
+            // 3. Sort shortest first
+            // 4. Take top 2
+            const uniqueComments = Array.from(new Set(allComments.map(c => c.trim())));
+            const validComments = uniqueComments.filter(c => c.length >= 2);
+            const shortSnippets = validComments.sort((a, b) => a.length - b.length).slice(0, 2);
 
             if (shortSnippets.length > 0) {
                 const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
@@ -177,7 +182,10 @@ export const checkAndSendAutoReport = async (trainingId: string, targetId: strin
                 allComments = [...allComments, ...answers];
             });
 
-            const shortSnippets = allComments.sort((a, b) => a.length - b.length).slice(0, 2);
+            // FILTER & SORT LOGIC:
+            const uniqueComments = Array.from(new Set(allComments.map(c => c.trim())));
+            const validComments = uniqueComments.filter(c => c.length >= 2);
+            const shortSnippets = validComments.sort((a, b) => a.length - b.length).slice(0, 2);
 
             if (shortSnippets.length > 0) {
                 const joinedSnippets = shortSnippets.map(s => `"${s}"`).join(', ');
